@@ -11,7 +11,7 @@
 # be deferred until a 'Segment Not Present' fault occurs at
 # the point where the first instruction-fetch is attempted.
 #
-# The executable ELF file-image (e.g., 'linuxapp') needs to
+# The executable ELF file-image (e.g., 'demoapp') needs to
 # be preinstalled on our disk image starting at block 130,
 # so that our boot loader will read it into memory putting
 # it at linear address 0x00018000.
@@ -20,9 +20,9 @@
 # reside during execution at higher addresses (i.e., in the
 # PC's 'Extended' memory, above 1-MB) will be 'loaded' when
 # our 'Segment-Not-Present' fault-handler gets executed, as
-# a result of the initial attempt to transfer out to ring3
+# a result of the initial attempt to transfer out to ring3.
 #
-# $Id:$
+# $Id: elfexec.s,v 1.4 2014/03/25 00:18:23 ralf Exp ralf $
 #
 #-----------------------------------------------------------------
 # Original version based on elfexec.s written by Allan Cruse,
@@ -48,13 +48,22 @@
         .equ    p_filesz,       0x10    # offset to seg size in file
         .equ    p_memsz,        0x14    # offset to seg size in mem
 
-#==================================================================
-        .section        .signature, "a", @progbits
-        .ascii  "ELFEXEC"
-        .byte   0
 
 #==================================================================
+# S I G N A T U R E
+#==================================================================
+        .section        .signature, "a", @progbits
+        .word   signame_size
+signame:.ascii  "ELFEXEC"
+        .equ    signame_size, (.-signame)
+        .byte   0
+
+
+#==================================================================
+# S E C T I O N   D A T A
+#==================================================================
         .section        .data
+
 #------------------------------------------------------------------
 # G L O B A L   D E S C R I P T O R   T A B L E
 #------------------------------------------------------------------
@@ -70,16 +79,16 @@ theGDT:
         .quad   0x004090018000FFFF      # file segment-descriptor
         #----------------------------------------------------------
         # Code/Data, 32 bit, 4kB, Priv 3, Type 0x0a, 'Execute/Read'
-        # Base Address: 0x00000000   Limit: 0x000fffff
+        # Base Address: 0x00000000   Limit: 0x0001ffff
         .equ    userCS, (.-theGDT)+3    # selector for ring3 code
         .globl  userCS
-        .quad   0x00CF7A000000FFFF      # code segment-descriptor
+        .quad   0x00C17A000000FFFF      # code segment-descriptor
         #----------------------------------------------------------
         # Code/Data, 32 bit, 4kB, Priv 3, Type 0x02, 'Read/Write'
-        # Base Address: 0x00000000   Limit: 0x000fffff
+        # Base Address: 0x00000000   Limit: 0x0001ffff
         .equ    userDS, (.-theGDT)+3    # selector for ring3 data
         .globl  userDS
-        .quad   0x00CFF2000000FFFF      # data segment-descriptor
+        .quad   0x00C1F2000000FFFF      # data segment-descriptor
         #----------------------------------------------------------
         .equ    selTSS, (.-theGDT)+0    # selector for Task-State
         .word   limTSS, theTSS+0x2000, 0x8901, 0x0000  # task descriptor
@@ -104,76 +113,65 @@ theTSS: .long   0x00000000              # back-link field (unused)
 tossav: .space  6                       # 48-bit pointer ss:esp
 #------------------------------------------------------------------
 
+
 #==================================================================
-
-#------------------------------------------------------------------
-        .section        .data
-hex:    .ascii  "0123456789ABCDEF"
-#------------------------------------------------------------------
+# S E C T I O N   T E X T
+#==================================================================
         .section        .text
-        .type       eax2hex, @function
-        .global     eax2hex
-eax2hex: .code32
-        pushal
-        mov     $8, %ecx
-nxnyb:  rol     $4, %eax
-        mov     %al, %bl
-        and     $0x0F, %ebx
-        mov     hex(%ebx), %dl
-        mov     %dl, (%edi)
-        inc     %edi
-        loop    nxnyb
-        popal
-        ret
-
-#------------------------------------------------------------------
-        .type   bail_out, @function
-        .global bail_out
-bail_out:
-        # terminate this demo
-        ljmp    $privCS, $finis
-        cli
-        hlt
-
+        .code32
 #------------------------------------------------------------------
         .type   main, @function
         .global main
 main:
+        #----------------------------------------------------------
         # save stack-address (we use it when returning to 'start')
         # use stack segment selector in order to have write access
+        #----------------------------------------------------------
         mov     %esp, tossav+0
         mov     %ss,  tossav+4
 
+        #----------------------------------------------------------
         # establish our Task-State Segment and a new ring-0 stack
+        #----------------------------------------------------------
         mov     $selTSS, %ax
         ltr     %ax
         lss     theTSS+4, %esp
 
+        #----------------------------------------------------------
         # install private exception handlers
+        #----------------------------------------------------------
         movw    $isrDBG, theIDT+0x01*8
         movw    $isrSNP, theIDT+0x0B*8
 
+        #----------------------------------------------------------
         # reprogram PICs and enable hardware interrupts
+        #----------------------------------------------------------
         call    remap_isr_pm
         sti
 
-        # verify ELF file's presence and 32-bit 'executable'
+        #----------------------------------------------------------
+        # verify ELF file's presence and 32-bit 'executable'.
         # address the elf headers using the FS segment register
+        #----------------------------------------------------------
         mov     $sel_fs, %ax
         mov     %ax, %fs
-        cmpl    $ELF_SIG, %fs:e_ident   # ELF-file signature
-        jne     finis
-        cmpb    $ELF_32, %fs:e_class    # file class is 32-bit
-        jne     finis
-        cmpw    $ET_EXEC, %fs:e_type    # type is 'executable'
-        jne     finis
+        cmpl    $ELF_SIG, %fs:e_ident   # check ELF-file signature
+        jne     elf_error               #   no, handle elf error
+        cmpb    $ELF_32, %fs:e_class    # check file class is 32-bit
+        jne     elf_error               #   no, handle elf error
+        cmpw    $ET_EXEC, %fs:e_type    # check type is 'executable'
+        jne     elf_error               #   no, handle elf error
 
+        #----------------------------------------------------------
         # setup segment-registers for the Linux application
+        #----------------------------------------------------------
         mov     $userDS, %ax
         mov     %ax, %ds
         mov     %ax, %es
 
+        #----------------------------------------------------------
         # clear general registers for the Linux application
+        #----------------------------------------------------------
         xor     %eax, %eax
         xor     %ebx, %ebx
         xor     %ecx, %ecx
@@ -182,18 +180,26 @@ main:
         xor     %esi, %esi
         xor     %edi, %edi
 
+        #----------------------------------------------------------
         # transfer control to the Linux application in ring3
+        #----------------------------------------------------------
         pushl   $userDS                 # selector for 'data'
         pushl   $0x00040000             # top of ring's stack
         pushl   $userCS                 # selector for 'code'
         pushl   %fs:e_entry             # program entry-point
 
+        #----------------------------------------------------------
         # set the TF-bit in FLAGS register just prior to 'lret'
+        #----------------------------------------------------------
         pushf                           # push current FLAGS
         btsw    $8, (%esp)              # set image of TF-bit
         popf                            # pop modified FLAGS
+        #----------------------------------------------------------
         # transfer to user program
+        #----------------------------------------------------------
         lret
+
+elf_error:
 
 finis:
         # disable hardware interrupts
@@ -211,15 +217,25 @@ finis:
 
         ret
 
+#------------------------------------------------------------------
+        .type   bail_out, @function
+        .global bail_out
+bail_out:
+        #----------------------------------------------------------
+        # terminate this demo
+        #----------------------------------------------------------
+        ljmp    $privCS, $finis
+#------------------------------------------------------------------
+
 
 #==================================================================
 #========  TRAP-HANDLER FOR SEGMENT-NOT-READY EXCEPTIONS  =========
 #==================================================================
+        .section        .text
+        .code32
         .type   isrSNP, @function
         .global isrSNP
-        .code32
 isrSNP:
-
         enter   $0, $0                  # setup error-code access
         pushal                          # preserve registers
         pushl   %ds
@@ -310,11 +326,11 @@ fillx:
 preval: .space  30 * 4
 #-----------------------------------------------------------------
         .section        .text
+        .code32
         .extern         get_flags_str
         .extern         wait_keypress
         .type   isrDBG, @function
         .global         isrDBG
-        .code32
 isrDBG:
         # push dummy error code onto stack. In this handler, this
         # location will later hold four opcode bytes starting at
@@ -460,7 +476,14 @@ norun:
 #==================================================================
 #===========        HANDLER FOR TIMER INTERRUPTS       ============
 #==================================================================
+#
+# Here is our code for handing timer-interrupts while the CPU is
+# executing in 'protected-mode'; it follows closely the original
+# 'real-mode' Interrupt-Service Routine used in the IBM-PC BIOS,
+#
+#-----------------------------------------------------------------
 # EQUATES for timing-constants and for ROM-BIOS address-offsets
+#-----------------------------------------------------------------
         .equ    HOURS24, 0x180000       # number of ticks-per-day
         .equ    N_TICKS, 0x006C         # offset for tick-counter
         .equ    TM_OVFL, 0x0070         # offset of rollover-flag
@@ -479,22 +502,21 @@ ticks:  .long   0
 prevticks: .long   0
 #-----------------------------------------------------------------
         .section        .text
+        .code32
         .type   isrPIT, @function
         .global isrPIT
-        .code32
 isrPIT:
-#
-# Here is our code for handing timer-interrupts while the CPU is
-# executing in 'protected-mode'; it follows closely the original
-# 'real-mode' Interrupt-Service Routine used in the IBM-PC BIOS,
-#
-        # an ISR must preserve any registers it needs to modify
+        #-----------------------------------------------------------
+        # preserve all registers, including modified segment registers
+        #-----------------------------------------------------------
         pushal
         pushl   %ds
         pushl   %es
         pushl   %fs
 
+        #-----------------------------------------------------------
         # setup segment registers
+        #-----------------------------------------------------------
         mov     $sel_bs, %ax            # address rom-bios data
         mov     %ax, %fs                #   using FS register
         mov     $sel_es, %ax            # address video memory
@@ -502,7 +524,9 @@ isrPIT:
         mov     $privDS, %ax            # address data segment
         mov     %ax, %ds                #   with DS register
 
+        #-----------------------------------------------------------
         # increment the 32-bit counter for timer-tick interrupts
+        #-----------------------------------------------------------
         incl    %fs:N_TICKS             # increment tick-count
         cmpl    $HOURS24, %fs:N_TICKS   # past midnight?
         jl      isok                    # no, don't rollover yet
@@ -510,7 +534,9 @@ isrPIT:
         movb    $1, %fs:TM_OVFL         # and set rollover flag
 isok:
 
+        #-----------------------------------------------------------
         # calculate total seconds (= N_TICKS * 65536 / 1193182)
+        #-----------------------------------------------------------
         mov     %fs:N_TICKS, %eax       # setup the multiplicand
         mov     $PULSES_PER_TICK, %ecx  # setup the multiplier
         mul     %ecx                    # 64 bit product is in (EDX,EAX)
@@ -539,27 +565,50 @@ isok:
         xor     %edx, %edx
         div     %ebx
 
+        #-----------------------------------------------------------
         # calculate the number of hours
+        #-----------------------------------------------------------
         mov     %edx, %eax
         xor     %edx, %edx
         mov     $SECS_PER_HOUR, %ebx
         div     %ebx
+        #-----------------------------------------------------------
+        # convert decimal hours value into two-digit BCD
+        #-----------------------------------------------------------
+        mov     $10, %bl
         lea     status, %edi
-        call    int_to_dec
+        div     %bl    # div ax by bl -> al: quotient, ah: remainder
+        add     $0x3030, %ax    # convert al and ah to BCD digits
+        mov     %ax, (%edi)
 
+        #-----------------------------------------------------------
         # calculate the number of minutes
+        #-----------------------------------------------------------
         mov     %edx, %eax
         xor     %edx, %edx
         mov     $SECS_PER_MIN, %ebx
         div     %ebx
+        #-----------------------------------------------------------
+        # convert decimal minutes value into two-digit BCD
+        #-----------------------------------------------------------
+        mov     $10, %bl
         lea     status+3, %edi
-        call    int_to_dec
-
+        div     %bl    # div ax by bl -> al: quotient, ah: remainder
+        add     $0x3030, %ax    # convert al and ah to BCD digits
+        mov     %ax, (%edi)
+        #-----------------------------------------------------------
+        # finally, convert decimal seconds value into two-digit BCD
+        #-----------------------------------------------------------
+        mov     $10, %bl
         mov     %edx, %eax
         lea     status+6, %edi
-        call    int_to_dec
+        div     %bl    # div ax by bl -> al: quotient, ah: remainder
+        add     $0x3030, %ax    # convert al and ah to BCD digits
+        mov     %ax, (%edi)
 
+        #-----------------------------------------------------------
         # loop to write character-codes to the screen
+        #-----------------------------------------------------------
         lea     status, %esi            # message-offset into ESI
         mov     $160*24, %edi
         mov     $64, %ecx               # message-length into ECX
@@ -570,39 +619,26 @@ cpchr:  lodsb                           # fetch next character
         loop    cpchr
 
 skip_update:
-
+        #-----------------------------------------------------------
         # send an 'End-of-Interrupt' command to the Master PIC
+        #-----------------------------------------------------------
         mov     $0x20, %al              # non-specific EOI command
         out     %al, $0x20              #  sent to the Master-PIC
 
+        #-----------------------------------------------------------
         # restore the values to the registers we've modified here
+        #-----------------------------------------------------------
         popl    %fs
         popl    %es
         popl    %ds
         popal
 
+        #-----------------------------------------------------------
         # resume execution of whichever procedure got interrupted
+        #-----------------------------------------------------------
         iret
 
 #------------------------------------------------------------------
-        .type   int_to_dec, @function
-int_to_dec:
-        push    %eax
-        push    %ebx
-        push    %edx
-
-        mov     $10, %bx
-        xor     %edx, %edx
-        div     %bx
-        add     $'0', %al
-        movb    %al, (%edi)
-        add     $'0', %dl
-        movb    %dl, 1(%edi)
-
-        pop     %edx
-        pop     %ebx
-        pop     %eax
-        ret
-#------------------------------------------------------------------
         .end
+#------------------------------------------------------------------
 
