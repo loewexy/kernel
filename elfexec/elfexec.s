@@ -113,7 +113,6 @@ theTSS: .long   0x00000000              # back-link field (unused)
 tossav: .space  6                       # 48-bit pointer ss:esp
 #------------------------------------------------------------------
 
-
 #==================================================================
 # S E C T I O N   T E X T
 #==================================================================
@@ -202,25 +201,63 @@ main:
 elf_error:
 
 finis:
+        #-----------------------------------------------------------
         # disable hardware interrupts
+        #-----------------------------------------------------------
         cli
 
+        #-----------------------------------------------------------
         # load appropriate ring0 data segment descriptor
+        #-----------------------------------------------------------
         mov     $privDS, %ax
         mov     %ax, %ds
 
+        #-----------------------------------------------------------
         # reprogram PICs to their original setting
+        #-----------------------------------------------------------
         call    remap_isr_rm
 
+        #-----------------------------------------------------------
         # recover former stack
+        #-----------------------------------------------------------
         lss     tossav, %esp
 
         ret
 
 #------------------------------------------------------------------
-        .type   bail_out, @function
-        .global bail_out
+        .section        .data
+        .align   4
+finmsg: .ascii  "\n\nProgram finished. "
+        .ascii  "Press any key to return to bootloader\n"
+        .equ    finmsglen, (. - finmsg) # message-length
+#------------------------------------------------------------------
+        .section        .text
+        .code32
+        .type    bail_out, @function
+        .global  bail_out
+        .align   16
 bail_out:
+        #-----------------------------------------------------------
+        # load ring0 data segment descriptor
+        #-----------------------------------------------------------
+        mov     $privDS, %ax
+        mov     %ax, %ds
+        #-----------------------------------------------------------
+        # print out program completion message
+        #-----------------------------------------------------------
+        lea     finmsg, %esi
+        mov     $finmsglen, %ecx
+        call    screen_write
+
+        #----------------------------------------------------------
+        # now await the release of a user's keypress
+        #----------------------------------------------------------
+        sti
+waitkey:
+        hlt
+        cmp     $0, (lastkey)
+        je      waitkey
+
         #----------------------------------------------------------
         # terminate this demo
         #----------------------------------------------------------
@@ -236,19 +273,30 @@ bail_out:
         .type   isrSNP, @function
         .global isrSNP
 isrSNP:
-        enter   $0, $0                  # setup error-code access
-        pushal                          # preserve registers
+        #-----------------------------------------------------------
+        # setup stack frame to access error-code via ebp
+        #-----------------------------------------------------------
+        enter   $0, $0
+
+        #-----------------------------------------------------------
+        # preserve all registers, including modified segment registers
+        #-----------------------------------------------------------
+        pushal
         pushl   %ds
         pushl   %es
 
+        #-----------------------------------------------------------
         # setup segment-registers for 'loading' program-segments
+        #-----------------------------------------------------------
         mov     $sel_fs, %ax            # address ELF file-image
         mov     %ax, %ds                #    with DS register
         mov     $userDS, %ax            # address entire memory
         mov     %ax, %es                #    with ES register
         cld                             # do forward processing
 
+        #-----------------------------------------------------------
         # extract load-information from the ELF-file's image
+        #-----------------------------------------------------------
         mov     e_phoff, %ebx       # segment-table's offset
         movzxw  e_phnum, %ecx       # count of table entries
         movzxw  e_phentsize, %edx   # length of table entries
@@ -274,7 +322,9 @@ fillx:
         add     %edx, %ebx              # advance to next record
         loop    nxseg                   # process another record
 
+        #-----------------------------------------------------------
         # now mark segment-descriptor as 'present'
+        #-----------------------------------------------------------
         mov     $privDS, %ax            # address GDT descriptors
         mov     %ax, %ds                #  using the DS register
         lea     theGDT, %ebx            # DS:EBX = our GDT's base
@@ -282,15 +332,27 @@ fillx:
         and     $0xFFF8, %eax           # isolate its index-field
         btsw    $15, 4(%ebx, %eax, 1)   # set P-bit in descriptor
 
+        #-----------------------------------------------------------
         # increment Interrupt counter
+        #-----------------------------------------------------------
         incl    intcnt+0x0B*4
 
-        popl    %es                     # recover saved registers
+        #-----------------------------------------------------------
+        # restore the values to the registers we've modified here
+        #-----------------------------------------------------------
+        popl    %es
         popl    %ds
         popal
-        leave                           # discard stackframe
+        leave
 
+        #-----------------------------------------------------------
+        # remove dummy error code from stack
+        #-----------------------------------------------------------
         add     $4, %esp                # discard error-code
+
+        #-----------------------------------------------------------
+        # resume and retry faulting opcode
+        #-----------------------------------------------------------
         iret                            # retry faulting opcode
 
 
@@ -323,6 +385,7 @@ fillx:
 #
 #-----------------------------------------------------------------
         .section        .data
+        .align   4
 preval: .space  30 * 4
 #-----------------------------------------------------------------
         .section        .text
@@ -332,25 +395,33 @@ preval: .space  30 * 4
         .type   isrDBG, @function
         .global         isrDBG
 isrDBG:
+        #-----------------------------------------------------------
         # push dummy error code onto stack. In this handler, this
         # location will later hold four opcode bytes starting at
         # the interrupted instruction
+        #-----------------------------------------------------------
         pushl   $0
 
+        #-----------------------------------------------------------
         # push general-purpose and all data segment registers onto
         # stack in order to preserve their value and also for display
+        #-----------------------------------------------------------
         pushal
         pushl   %ds
         pushl   %es
         pushl   %fs
         pushl   %gs
 
+        #-----------------------------------------------------------
         # setup stackframe pointer. All locations on the stack with
         # negative offset relative to EBP hold registers that are
         # specific to the register dump of this handler
+        #-----------------------------------------------------------
         mov     %esp, %ebp
 
+        #-----------------------------------------------------------
         # ok, let's display the Debug Registers, too
+        #-----------------------------------------------------------
         mov     %dr7, %eax
         push    %eax                    # push value from DR7
         mov     %dr6, %eax
@@ -364,54 +435,74 @@ isrDBG:
         mov     %dr0, %eax
         push    %eax                    # push value from DR0
 
+        #-----------------------------------------------------------
         # address ring0 data segment with DS register
+        #-----------------------------------------------------------
         mov     $privDS, %ax            # address data segment
         mov     %ax, %ds                #   with DS register
 
+        #-----------------------------------------------------------
         # examine the Debug Status Register DR6
+        #-----------------------------------------------------------
         mov     %dr6, %eax              # examine register DR6
         test    $0x0000000F, %eax       # any breakpoints?
         jz      nobpt                   # no, keep RF-flag
         btsl    $16, 60(%ebp)           # else set RF-flag
 nobpt:
-        # examine instruction at saved CS:EIP address
-        lfs     52(%ebp), %esi          # point FS:ESI to retn-addr
+        #-----------------------------------------------------------
+        # load CS:EIP return address sored on stack into FS:ESI
+        #-----------------------------------------------------------
+        lfs     52(%ebp), %esi
 
-        # Pick the selector's descriptor-table
+        #-----------------------------------------------------------
+        # pick the selector's descriptor-table
+        #-----------------------------------------------------------
         lea     theGDT, %ebx            # EBX = offset for GDT
         mov     %fs, %ecx               # copy selector to ECX
         and     $0xFFF8, %ecx           # isolate selector-index
 
-        # Extract the FS segment descriptor's limit in order to
+        #-----------------------------------------------------------
+        # extract the FS segment descriptor's limit in order to
         # determine how many instructions bytes starting at
         # FS:ESI we can read without violating the limit
+        #-----------------------------------------------------------
         mov     4(%ebx, %ecx), %eax
         and     $0x000f0000, %eax
         mov     0(%ebx, %ecx), %ax
 
+        #-----------------------------------------------------------
         # fetch next opcode-bytes and write to stack for display
+        #-----------------------------------------------------------
         mov     %fs:(%esi), %eax
         mov     %eax, 48(%ebp)
 
+        #-----------------------------------------------------------
         # set breakpoint trap after any 'int-nn' instruction
+        #-----------------------------------------------------------
         cmp     $0xCD, %al              # opcode is 'int-nn'?
         jne     nobrk                   # no, don't set breakpoint
         add     $2, %esi                # else point past 'int-nn'
 
-        # Extract the DS segment descriptor's base-address and
+        #-----------------------------------------------------------
+        # extract the DS segment descriptor's base-address and
         # use it to compute linear-address of the instruction at
         # FS:ESI
+        #-----------------------------------------------------------
         mov     0(%ebx, %ecx), %eax     # descriptor[31..0]
         mov     4(%ebx, %ecx), %al      # descriptor[39..32]
         mov     7(%ebx, %ecx), %ah      # descriptor[63..54]
         rol     $16, %eax               # segment's base-address
 
-        # Setup the instruction-breakpoint in DR0
+        #-----------------------------------------------------------
+        # setup the instruction-breakpoint in DR0
+        #-----------------------------------------------------------
         add     %eax, %esi              # add segbase to offset
         mov     %esi, %dr0              # breakpoint into DR0
         mov     %esi, -24(%ebp)         # and also update DR0 on the stack
 
-        # Activate the code-breakpoint in register DR0
+        #-----------------------------------------------------------
+        # activate the code-breakpoint in register DR0
+        #-----------------------------------------------------------
         mov     %dr7, %eax              # get current DR7 settings
         and     $0xFFF0FFFC, %eax       # clear the G0 and L0 bits
         or      $0x00000001, %eax       # enable L0 code-breakpoint
@@ -420,19 +511,27 @@ nobpt:
         jmp     printstack
 
 nobrk:
+        #-----------------------------------------------------------
         # clear instruction-breakpoint address in DR0
+        #-----------------------------------------------------------
         xor     %eax, %eax
         mov     %eax, %dr0
+        #-----------------------------------------------------------
         # clear the G0 and L0 bits in DR7
+        #-----------------------------------------------------------
         mov     %dr7, %eax
         and     $0xFFF0FFFC, %eax
         mov     %eax, %dr7
+        #-----------------------------------------------------------
         # NOTE: do not update DR0 and DR7 on the stack now as this
         # would prevent correct display of the breakpoint address and
         # status when the breakpoint is hit.
+        #-----------------------------------------------------------
 
 printstack:
+        #-----------------------------------------------------------
         # highlight breakpoints in register DR6
+        #-----------------------------------------------------------
         mov     %dr6, %eax
         and     $0x0000000F, %eax
         pushl   %eax
@@ -445,31 +544,45 @@ printstack:
         pushl   %eax
         call    print_stacktrace
 
+        #-----------------------------------------------------------
         # now await the release of a user's keypress
-        call    wait_keypress
-        cmp     $'r', %al
+        #-----------------------------------------------------------
+pollkey:
+        hlt
+        cmp     $0, (lastkey)
+        je      pollkey
+        cmp     $'r', (lastkey)
         jne     norun
 
+        #-----------------------------------------------------------
         # disable any active debug-breakpoints and clear TF-Flag,
         # in order that the remainder of the loaded program will be
         # executed until its end without single-stepping
+        #-----------------------------------------------------------
         xor     %eax, %eax              # clear general register
         mov     %eax, %dr7              # and load zero into DR7
         btrl    $8, 60(%ebp)            # clear Trap Flag
 norun:
+        movb    $0, (lastkey)
         mov     %ebp, %esp              # discard other stack data
 
-        # restore the suspended task's registers
+        #-----------------------------------------------------------
+        # restore the values to the registers we've modified here
+        #-----------------------------------------------------------
         popl    %gs
         popl    %fs
         popl    %es
         popl    %ds
         popal
 
+        #-----------------------------------------------------------
         # remove dummy error code from stack
+        #-----------------------------------------------------------
         add     $4, %esp
 
+        #-----------------------------------------------------------
         # resume interrupted work
+        #-----------------------------------------------------------
         iret
 
 
@@ -494,6 +607,7 @@ norun:
         .equ    SECS_PER_DAY, 24*SECS_PER_HOUR # seconds per day
 
         .section        .data
+        .align   4
 status: .ascii  "00:00:00"
         .ascii  "                                        "
         .ascii  "                                        "
@@ -634,7 +748,56 @@ skip_update:
         popal
 
         #-----------------------------------------------------------
-        # resume execution of whichever procedure got interrupted
+        # resume interrupted work
+        #-----------------------------------------------------------
+        iret
+
+
+#==================================================================
+#============  TRAP-HANDLER FOR KEYBOARD EXCEPTIONS  ==============
+#==================================================================
+        .section        .data
+        .align   4
+lastkey:.byte   0
+        .section        .text
+        .code32
+        .type   isrKBD, @function
+        .global isrKBD
+isrKBD:
+        #-----------------------------------------------------------
+        # preserve all registers, including modified segment registers
+        #-----------------------------------------------------------
+        pushal
+        pushl   %ds
+
+        mov     $privDS, %ax            # address data
+        mov     %ax, %ds                #  using the DS register
+
+        in      $0x64, %al              # poll keyboard status
+        test    $0x01, %al              # new scancode ready?
+        jz      ignore                  # no, false alarm
+
+        in      $0x60, %al              # input the new scancode
+        test    $0x80, %al              # was a key released?
+        jz      ignore                  # no, wait for a release
+        and     $0x0000007f, %eax       # mask for 7-bit ASCII
+        mov     kbdus(%eax), %al        # translate scancode into ASCII
+        mov     %al, (lastkey)
+ignore:
+        #-----------------------------------------------------------
+        # send an 'End-of-Interrupt' command to the Master PIC
+        #-----------------------------------------------------------
+        mov     $0x20, %al              # non-specific EOI command
+        out     %al, $0x20              #  sent to the Master-PIC
+
+        #-----------------------------------------------------------
+        # restore the values to the registers we've modified here
+        #-----------------------------------------------------------
+        popl    %ds
+        popal
+
+        #-----------------------------------------------------------
+        # resume interrupted work
         #-----------------------------------------------------------
         iret
 
