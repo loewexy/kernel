@@ -30,6 +30,27 @@
 #-----------------------------------------------------------------
 
 
+#-----------------------------------------------------------------
+# M A C R O S
+#-----------------------------------------------------------------
+    .macro  INSTALL_ISR id handler
+        pushl   $\handler               # push pointer to handler
+        pushl   $\id                    # push interrupt-ID
+        call    register_isr
+        add     $8, %esp
+    .endm
+
+    .macro  INSTALL_IRQ id handler
+        pushl   $\handler               # push pointer to handler
+        pushl   $\id+0x20               # push interrupt-ID
+        call    register_isr
+        add     $8, %esp
+    .endm
+
+
+#-----------------------------------------------------------------
+# C O N S T A N T S
+#-----------------------------------------------------------------
         # equates for Elf32 file-format (derived from 'elf.h')
         .equ    ELF_SIG,  0x464C457F    # ELF-file's 'signature'
         .equ    ELF_32,            1    # Elf_32 file format
@@ -47,6 +68,11 @@
         .equ    p_paddr,        0x0C    # offset to seg phys addr
         .equ    p_filesz,       0x10    # offset to seg size in file
         .equ    p_memsz,        0x14    # offset to seg size in mem
+
+        .equ    IRQ_PIT_ID,     0x00
+        .equ    IRQ_KBD_ID,     0x01
+        .equ    ISR_DBG_ID,     0x01
+        .equ    ISR_SNP_ID,     0x0B
 
 
 #==================================================================
@@ -139,8 +165,10 @@ main:
         #----------------------------------------------------------
         # install private exception handlers
         #----------------------------------------------------------
-        movw    $isrDBG, theIDT+0x01*8
-        movw    $isrSNP, theIDT+0x0B*8
+        INSTALL_IRQ IRQ_PIT_ID, irqPIT
+        INSTALL_IRQ IRQ_KBD_ID, irqKBD
+        INSTALL_ISR ISR_DBG_ID, isrDBG
+        INSTALL_ISR ISR_SNP_ID, isrSNP
 
         #----------------------------------------------------------
         # reprogram PICs and enable hardware interrupts
@@ -268,22 +296,60 @@ waitkey:
 #==================================================================
 #========  TRAP-HANDLER FOR SEGMENT-NOT-READY EXCEPTIONS  =========
 #==================================================================
+#
+#-----------------------------------------------------------------
+# Stack Frame Layout
+#-----------------------------------------------------------------
+#
+#                 Byte 0
+#                      V
+#    +-----------------+
+#    |       SS        |  +72
+#    +-----------------+
+#    |       ESP       |  +68
+#    +-----------------+
+#    |     EFLAGS      |  +64
+#    +-----------------+
+#    |       CS        |  +60
+#    +-----------------+
+#    |       EIP       |  +56
+#    +-----------------+
+#    |    Error Code   |  +52
+#    +-----------------+
+#    |      INT ID     |  +48
+#    +-----------------+
+#    |   General Regs  |
+#    | EAX ECX EDX EBX |  +32
+#    | ESP EBP ESI EDI |  +16
+#    +-----------------+
+#    |  Segment  Regs  |
+#    |   DS ES FS GS   |  <-- 8(%ebp)
+#    +=================+
+#    |  Int Stack Ptr  |  +8
+#    +-----------------+
+#    |  Return Address |  +4
+#    +-----------------+
+#    |       EBP       |  <-- ebp
+#    +=================+
+#
+#
+# Selector Error Code
+#    31         16   15         3   2   1   0
+#   +---+--  --+---+---+--  --+---+---+---+---+
+#   |   Reserved   |    Index     |  Tbl  | E |
+#   +---+--  --+---+---+--  --+---+---+---+---+
+#
+#-----------------------------------------------------------------
         .section        .text
         .code32
         .type   isrSNP, @function
         .global isrSNP
+        .align   16
 isrSNP:
         #-----------------------------------------------------------
-        # setup stack frame to access error-code via ebp
+        # setup stack frame access via ebp
         #-----------------------------------------------------------
         enter   $0, $0
-
-        #-----------------------------------------------------------
-        # preserve all registers, including modified segment registers
-        #-----------------------------------------------------------
-        pushal
-        pushl   %ds
-        pushl   %es
 
         #-----------------------------------------------------------
         # setup segment-registers for 'loading' program-segments
@@ -328,65 +394,67 @@ fillx:
         mov     $privDS, %ax            # address GDT descriptors
         mov     %ax, %ds                #  using the DS register
         lea     theGDT, %ebx            # DS:EBX = our GDT's base
-        mov     4(%ebp), %eax           # get fault's error-code
+        mov     8(%ebp), %ecx           # read ISR stack frame ptr
+        mov     52(%ecx), %eax          # get fault's error-code
         and     $0xFFF8, %eax           # isolate its index-field
         btsw    $15, 4(%ebx, %eax, 1)   # set P-bit in descriptor
 
-        #-----------------------------------------------------------
-        # increment Interrupt counter
-        #-----------------------------------------------------------
-        incl    intcnt+0x0B*4
-
-        #-----------------------------------------------------------
-        # restore the values to the registers we've modified here
-        #-----------------------------------------------------------
-        popl    %es
-        popl    %ds
-        popal
         leave
-
-        #-----------------------------------------------------------
-        # remove dummy error code from stack
-        #-----------------------------------------------------------
-        add     $4, %esp                # discard error-code
-
-        #-----------------------------------------------------------
-        # resume and retry faulting opcode
-        #-----------------------------------------------------------
-        iret                            # retry faulting opcode
+        ret
 
 
 #==================================================================
 #===========  TRAP-HANDLER FOR SINGLE-STEP EXCEPTIONS  ============
 #==================================================================
 #
+#-----------------------------------------------------------------
+# Stack Frame Layout
+#-----------------------------------------------------------------
+#
 #                 Byte 0
 #                      V
 #    +-----------------+
-#    |       SS        |  +68
+#    |       SS        |  +72
 #    +-----------------+
-#    |       ESP       |  +64
-#    +-----------------+               +-------------+
-#    |     EFLAGS      |  +60          |  ISR Stack  |
-#    +-----------------+               |  see left   |  <-- ebp
-#    |       CS        |  +56          +-------------+
-#    +-----------------+               | DR7         |   -4
-#    |       EIP       |  +52          +-------------+
-#    +-----------------+               | DR6         |   -8
-#    |    Error Code   |  +48          +-------------+
-#    +-----------------+               | DR3         |  -12
-#    |   General Regs  |               +-------------+
-#    | EAX ECX EDX EBX |  +32          | DR2         |  -16
-#    | ESP EBP ESI EDI |  +16          +-------------+
-#    +-----------------+               | DR1         |  -20
-#    |  Segment  Regs  |               +-------------+
-#    |   DS ES FS GS   |  <-- ebp      | DR0         |  -24
-#    +=================+               +-------------+
+#    |       ESP       |  +68
+#    +-----------------+
+#    |     EFLAGS      |  +64
+#    +-----------------+
+#    |       CS        |  +60
+#    +-----------------+
+#    |       EIP       |  +56
+#    +-----------------+
+#    |    Error Code   |  +52
+#    +-----------------+
+#    |      INT ID     |  +48
+#    +-----------------+
+#    |   General Regs  |
+#    | EAX ECX EDX EBX |  +32
+#    | ESP EBP ESI EDI |  +16
+#    +-----------------+
+#    |  Segment  Regs  |
+#    |   DS ES FS GS   |  <-- edx
+#    +=================+
+#    |  Int Stack Ptr  |  +8
+#    +-----------------+
+#    |  Return Address |  +4
+#    +-----------------+
+#    |       EBP       |  <-- ebp
+#    +=================+
+#    | DR7             |   -4
+#    +-----------------+
+#    | DR6             |   -8
+#    +-----------------+
+#    | DR1             |  -12
+#    +-----------------+
+#    | DR0             |  -16
+#    +-----------------+
 #
 #-----------------------------------------------------------------
         .section        .data
         .align   4
-preval: .space  30 * 4
+preval1:.space  20 * 4, 0
+preval2:.space   4 * 4, 0
 #-----------------------------------------------------------------
         .section        .text
         .code32
@@ -394,30 +462,21 @@ preval: .space  30 * 4
         .extern         wait_keypress
         .type   isrDBG, @function
         .global         isrDBG
+        .align   16
 isrDBG:
         #-----------------------------------------------------------
-        # push dummy error code onto stack. In this handler, this
-        # location will later hold four opcode bytes starting at
-        # the interrupted instruction
+        # ISR stub disables interrupts, so we need to re-enable them
+        # in order to be able to capture keybaord interrupts while
+        # waiting in this handler. This is probably not the most sane
+        # solution...
         #-----------------------------------------------------------
-        pushl   $0
+        sti
 
         #-----------------------------------------------------------
-        # push general-purpose and all data segment registers onto
-        # stack in order to preserve their value and also for display
+        # setup stack frame access via ebp
         #-----------------------------------------------------------
-        pushal
-        pushl   %ds
-        pushl   %es
-        pushl   %fs
-        pushl   %gs
-
-        #-----------------------------------------------------------
-        # setup stackframe pointer. All locations on the stack with
-        # negative offset relative to EBP hold registers that are
-        # specific to the register dump of this handler
-        #-----------------------------------------------------------
-        mov     %esp, %ebp
+        enter   $0, $0
+        mov     8(%ebp), %edx           # read ISR stack frame ptr
 
         #-----------------------------------------------------------
         # ok, let's display the Debug Registers, too
@@ -426,10 +485,6 @@ isrDBG:
         push    %eax                    # push value from DR7
         mov     %dr6, %eax
         push    %eax                    # push value from DR6
-        mov     %dr3, %eax
-        push    %eax                    # push value from DR3
-        mov     %dr2, %eax
-        push    %eax                    # push value from DR2
         mov     %dr1, %eax
         push    %eax                    # push value from DR1
         mov     %dr0, %eax
@@ -447,12 +502,12 @@ isrDBG:
         mov     %dr6, %eax              # examine register DR6
         test    $0x0000000F, %eax       # any breakpoints?
         jz      nobpt                   # no, keep RF-flag
-        btsl    $16, 60(%ebp)           # else set RF-flag
+        btsl    $16, %ss:64(%edx)       # else set RF-flag
 nobpt:
         #-----------------------------------------------------------
-        # load CS:EIP return address sored on stack into FS:ESI
+        # load CS:EIP return address stored on stack into FS:ESI
         #-----------------------------------------------------------
-        lfs     52(%ebp), %esi
+        lfs     %ss:56(%edx), %esi
 
         #-----------------------------------------------------------
         # pick the selector's descriptor-table
@@ -471,10 +526,13 @@ nobpt:
         mov     0(%ebx, %ecx), %ax
 
         #-----------------------------------------------------------
-        # fetch next opcode-bytes and write to stack for display
+        # fetch next four opcode-bytes starting at the interrupted
+        # location and write them to the stack for display. On the
+        # stack, we use the location of the error code, which is not
+        # set by the trap exception
         #-----------------------------------------------------------
         mov     %fs:(%esi), %eax
-        mov     %eax, 48(%ebp)
+        mov     %eax, %ss:52(%edx)
 
         #-----------------------------------------------------------
         # set breakpoint trap after any 'int-nn' instruction
@@ -498,7 +556,7 @@ nobpt:
         #-----------------------------------------------------------
         add     %eax, %esi              # add segbase to offset
         mov     %esi, %dr0              # breakpoint into DR0
-        mov     %esi, -24(%ebp)         # and also update DR0 on the stack
+        mov     %esi, -16(%ebp)         # and also update DR0 on the stack
 
         #-----------------------------------------------------------
         # activate the code-breakpoint in register DR0
@@ -529,18 +587,27 @@ nobrk:
         #-----------------------------------------------------------
 
 printstack:
+        pushl   $0                      # do not highlight any registers
+        pushl   $65
+        pushl   $0x9e0faf               # white,green   white, black
+        pushl   $INT_NUM
+        pushl   $preval1
+        pushl   $intname
+        pushl   %edx
+        call    print_stacktrace
+
         #-----------------------------------------------------------
         # highlight breakpoints in register DR6
         #-----------------------------------------------------------
         mov     %dr6, %eax
-        and     $0x0000000F, %eax
+        and     $0x00000003, %eax
         pushl   %eax
-        pushl   $65
+        pushl   $50
         pushl   $0x9e0faf               # white,green   white, black
         pushl   $DBG_NUM
-        pushl   $preval
+        pushl   $preval2
         pushl   $dbgname
-        lea     -24(%ebp), %eax
+        lea     -16(%ebp), %eax
         pushl   %eax
         call    print_stacktrace
 
@@ -561,29 +628,12 @@ pollkey:
         #-----------------------------------------------------------
         xor     %eax, %eax              # clear general register
         mov     %eax, %dr7              # and load zero into DR7
-        btrl    $8, 60(%ebp)            # clear Trap Flag
+        btrl    $8, 64(%edx)            # clear Trap Flag
 norun:
         movb    $0, (lastkey)
-        mov     %ebp, %esp              # discard other stack data
 
-        #-----------------------------------------------------------
-        # restore the values to the registers we've modified here
-        #-----------------------------------------------------------
-        popl    %gs
-        popl    %fs
-        popl    %es
-        popl    %ds
-        popal
-
-        #-----------------------------------------------------------
-        # remove dummy error code from stack
-        #-----------------------------------------------------------
-        add     $4, %esp
-
-        #-----------------------------------------------------------
-        # resume interrupted work
-        #-----------------------------------------------------------
-        iret
+        leave
+        ret
 
 
 #==================================================================
@@ -605,7 +655,7 @@ norun:
         .equ    SECS_PER_MIN, 60        # seconds per minute
         .equ    SECS_PER_HOUR, 60*SECS_PER_MIN # seconds per hour
         .equ    SECS_PER_DAY, 24*SECS_PER_HOUR # seconds per day
-
+#-----------------------------------------------------------------
         .section        .data
         .align   4
 status: .ascii  "00:00:00"
@@ -617,26 +667,11 @@ prevticks: .long   0
 #-----------------------------------------------------------------
         .section        .text
         .code32
-        .type   isrPIT, @function
-        .global isrPIT
-isrPIT:
-        #-----------------------------------------------------------
-        # preserve all registers, including modified segment registers
-        #-----------------------------------------------------------
-        pushal
-        pushl   %ds
-        pushl   %es
-        pushl   %fs
-
-        #-----------------------------------------------------------
-        # setup segment registers
-        #-----------------------------------------------------------
-        mov     $sel_bs, %ax            # address rom-bios data
-        mov     %ax, %fs                #   using FS register
-        mov     $sel_es, %ax            # address video memory
-        mov     %ax, %es                #   with ES register
-        mov     $privDS, %ax            # address data segment
-        mov     %ax, %ds                #   with DS register
+        .type   irqPIT, @function
+        .global irqPIT
+        .align   16
+irqPIT:
+        enter   $0, $0
 
         #-----------------------------------------------------------
         # increment the 32-bit counter for timer-tick interrupts
@@ -725,7 +760,7 @@ isok:
         #-----------------------------------------------------------
         lea     status, %esi            # message-offset into ESI
         mov     $160*24, %edi
-        mov     $64, %ecx               # message-length into ECX
+        mov     $79, %ecx               # message-length into ECX
         cld
         mov     $0x7020, %ax            # normal text attribute
 cpchr:  lodsb                           # fetch next character
@@ -733,45 +768,26 @@ cpchr:  lodsb                           # fetch next character
         loop    cpchr
 
 skip_update:
-        #-----------------------------------------------------------
-        # send an 'End-of-Interrupt' command to the Master PIC
-        #-----------------------------------------------------------
-        mov     $0x20, %al              # non-specific EOI command
-        out     %al, $0x20              #  sent to the Master-PIC
-
-        #-----------------------------------------------------------
-        # restore the values to the registers we've modified here
-        #-----------------------------------------------------------
-        popl    %fs
-        popl    %es
-        popl    %ds
-        popal
-
-        #-----------------------------------------------------------
-        # resume interrupted work
-        #-----------------------------------------------------------
-        iret
+        leave
+        ret
 
 
 #==================================================================
-#============  TRAP-HANDLER FOR KEYBOARD EXCEPTIONS  ==============
+#===========      HANDLER FOR KEYBOARD INTERRUPTS      ============
 #==================================================================
         .section        .data
         .align   4
 lastkey:.byte   0
         .section        .text
         .code32
-        .type   isrKBD, @function
-        .global isrKBD
-isrKBD:
+        .type   irqKBD, @function
+        .global irqKBD
+        .align   16
+irqKBD:
         #-----------------------------------------------------------
         # preserve all registers, including modified segment registers
         #-----------------------------------------------------------
-        pushal
-        pushl   %ds
-
-        mov     $privDS, %ax            # address data
-        mov     %ax, %ds                #  using the DS register
+        enter   $0, $0
 
         in      $0x64, %al              # poll keyboard status
         test    $0x01, %al              # new scancode ready?
@@ -784,22 +800,8 @@ isrKBD:
         mov     kbdus(%eax), %al        # translate scancode into ASCII
         mov     %al, (lastkey)
 ignore:
-        #-----------------------------------------------------------
-        # send an 'End-of-Interrupt' command to the Master PIC
-        #-----------------------------------------------------------
-        mov     $0x20, %al              # non-specific EOI command
-        out     %al, $0x20              #  sent to the Master-PIC
-
-        #-----------------------------------------------------------
-        # restore the values to the registers we've modified here
-        #-----------------------------------------------------------
-        popl    %ds
-        popal
-
-        #-----------------------------------------------------------
-        # resume interrupted work
-        #-----------------------------------------------------------
-        iret
+        leave
+        ret
 
 #------------------------------------------------------------------
         .end
