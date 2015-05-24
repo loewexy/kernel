@@ -12,13 +12,13 @@
 # Then, it loads a chunk of blocks from floppy disk into
 # memory starting at address 0x07E0:0000.
 #
-# If a program with signature word 0xBEEF is found at this
-# location, this program is executed with CS:IP = 0x07E0:0010.
+# If a program with signature word 0xABCD is found at location
+# 0x1000:0000, this program is executed with CS:IP = 0x1000:0002.
 #
-# Otherwise, address 0x1000:0000 is checked for signature
-# word 0xCAFE, and if found, the program located there is
-# executed with CS:IP = 0x1000:addr, where the 16-bit start
-# address 'addr' is stored at location 0x1000:0002.
+# Otherwise, address 0x1000:0000 is checked for signature string
+# 'DHBW', and if found, the program located there is executed
+# with CS:IP = 0x1000:addr, where the 16-bit start # address
+# 'addr' is stored at location 0x1000:0008.
 #
 #-----------------------------------------------------------------
 # NOTES:
@@ -28,12 +28,12 @@
 # LIMITATIONS:
 # This bootloader assumes a virtual floppy disk, e.g. as provided
 # by qemu. In order to support real floppy drive hardware, drive
-# motor control needs to added.
+# motor control needs to be added.
 #
 #-----------------------------------------------------------------
 # Author(s): Ralf Reutemann
 #
-# $Id: bootload.s,v 2.0 2014/10/03 18:59:34 ralf Exp ralf $
+# $Id: bootload.s,v 3.0 2014/12/14 12:28:23 ralf Exp ralf $
 #
 #-----------------------------------------------------------------
 # Based on cs630ipl.s and memsize.s written by Allan Cruse,
@@ -65,7 +65,7 @@ _start:
         #----------------------------------------------------------
         # Bootloader Signature String
         #----------------------------------------------------------
-        .ascii  "DHBWBOOT_V2"
+        .ascii  "DHBWBOOT_V3"
         .align  8
         #----------------------------------------------------------
 mystart:
@@ -101,18 +101,27 @@ mystart:
         # use repeated division by ten to convert the value found
         # in AX to a decimal digit-string (without leading zeros)
         #----------------------------------------------------------
+        xor     %ax, %ax
         int     $0x12                   # get ram's size into AX
+        jc      lmemfail
+        test    %ax, %ax
+        jz      lmemfail
+        mov     $10, %bx                # divide by 10
         mov     $5, %di                 # initialize buffer-index
 nxdgt:  xor     %dx, %dx                # extend AX to doubleword
-        divw    ten                     # divide by decimal radix
+        divw    %bx                     # divide by decimal radix
         add     $'0', %dl               # convert number to ascii
         dec     %di                     # buffer-index moved left
         mov     %dl, mbuf(%di)          # store numeral in buffer
         or      %ax, %ax                # was the quotient zero?
         jnz     nxdgt                   # no, get another numeral
+lmemfail:
 
-        lea     mmsg, %bp               # message-offset in BP
-        mov     mmlen, %cx              # message-length in CX
+        #----------------------------------------------------------
+        # print boot message
+        #----------------------------------------------------------
+        lea     bootmsg, %bp            # message offset
+        mov     $bootmsg_len, %cx       # message length
         call    showmsg
         #----------------------------------------------------------
 
@@ -133,18 +142,51 @@ readloop:
         # check for our application signature
         #----------------------------------------------------------
         les     progloc, %di            # point ES:DI to program location
-        cmpw    $0xCAFE, %es:(%di)      # our signature there?
-        mov     %es:2(%di), %ax         # store segment offset
-        je      load_prog               # yes, load program
+        mov     %es:8(%di), %ax         # load segment start address
+        cmpw    $0x4844, %es:(%di)      # check signature word 1 = 'DH'
+        jne     check_abcd              #   no, check next signature
+        cmpw    $0x5742, %es:2(%di)     # check signature word 2 = 'BW'
+        jne     check_abcd              #   no, check next signature
 
+        #----------------------------------------------------------
+        # print program load message
+        #----------------------------------------------------------
+        lea     ldmsg, %bp              # message offset
+        mov     $ldmsg_len, %cx         # message length
+        call    showmsg
+
+        #----------------------------------------------------------
+        # print program name stored in signature
+        #----------------------------------------------------------
+        push    %ds                     # save DS on stack
+        mov     %es, %cx                # ES points to program location
+        mov     %cx, %ds                #   and DS now as well
+        lea     24(%di), %bp            # message-offset in BP
+        mov     %es:20(%di), %cx        # message-length in CX
+        call    showmsg
+        pop     %ds                     # restore DS from stack
+
+        #----------------------------------------------------------
+        # print CR/LF string
+        #----------------------------------------------------------
+        lea     crlf, %bp               # message offset
+        mov     $crlf_len, %cx          # message length
+        call    showmsg
+
+        jmp     load_prog
+
+        #----------------------------------------------------------
+check_abcd:
         #----------------------------------------------------------
         # check for orignal USF signature
         #----------------------------------------------------------
-        les     progloc, %di            # point ES:DI to program location
         cmpw    $0xABCD, %es:(%di)      # our signature there?
-        jne     inval                   # no, format not valid
-        mov     $2, %ax
+        jne     inval                   #   no, format not valid
+        mov     $2, %ax                 # initialise segment start address
 
+        #----------------------------------------------------------
+        # load program
+        #----------------------------------------------------------
 load_prog:
         #----------------------------------------------------------
         # push segment and address offset of return location
@@ -160,29 +202,24 @@ load_prog:
         # jump to target location
         #----------------------------------------------------------
         lret
-cleanup:
-        #----------------------------------------------------------
-        # accommodate 'quirk' in some ROM-BIOS service-functions
-        #----------------------------------------------------------
-        mov     %cs, %ax                # address our variables
-        mov     %ax, %ds                #   using DS register
-        lgdt    regGDT                  # setup register GDTR
-        cli                             # turn off interrupts
-        mov     %cr0, %eax              # get machine status
-        bts     $0, %eax                # set image of PE-bit
-        mov     %eax, %cr0              # enter protected-mode
-        mov     $8, %dx                 # descriptor's selector
-        mov     %dx, %fs                # for 4GB segment-limit
-        mov     %dx, %gs                # both in FS and in GS
-        btr     $0, %eax                # reset image of PE-bit
-        mov     %eax, %cr0              # leave protected-mode
-        sti                             # interrupts on again
+        #==========================================================
 
         #----------------------------------------------------------
-        # show the user our 'reboot' message
+        # return location
         #----------------------------------------------------------
-        lea     msg0, %bp               # message-offset in BP
-        mov     len0, %cx               # message-length in CX
+cleanup:
+        #----------------------------------------------------------
+        # setup segment-registers to address our program-data
+        #----------------------------------------------------------
+        mov     %cs, %ax                # address program data
+        mov     %ax, %ds                # with DS register
+        mov     %ax, %es                #   also ES register
+
+        #----------------------------------------------------------
+        # print 'reboot' message
+        #----------------------------------------------------------
+        lea     msg0, %bp               # message offset
+        mov     $msg0_len, %cx          # message length
 waitkey:
         call    showmsg
         #----------------------------------------------------------
@@ -200,12 +237,12 @@ waitkey:
         #----------------------------------------------------------
 
 #------------------------------------------------------------------
-rderr:  lea     msg1, %bp               # message-offset in BP
-        mov     len1, %cx               # message-length in CX
+rderr:  lea     msg1, %bp               # message offset
+        mov     $msg1_len, %cx          # message length
         jmp     waitkey
 #------------------------------------------------------------------
-inval:  lea     msg2, %bp               # message-offset in BP
-        mov     len2, %cx               # message-length in CX
+inval:  lea     msg2, %bp               # message offset
+        mov     $msg2_len, %cx          # message length
         jmp     waitkey
 #------------------------------------------------------------------
 # Parameters:
@@ -226,7 +263,7 @@ inval:  lea     msg2, %bp               # message-offset in BP
 #  AL   = number of sectors read
 #  CF   = 0 if successful, 1 if error
 #
-#  - BIOS disk reads should be retried at least three times and the
+#  - BIOS disk reads should be retrieved at least three times and the
 #    controller should be reset upon error detection
 #  - be sure ES:BX does not cross a 64K segment boundary or a
 #    DMA boundary error will occur
@@ -305,8 +342,10 @@ read_one_sector:
 
         #----------------------------------------------------------
         # increment segmented address by sector size (512 bytes)
+        # start address of a segment is a multiple of 16, therefore
+        # increment segment address by 32 (= 512/16)
         #----------------------------------------------------------
-        addw    $0x20, loadloc+2        # add sector size to segment
+        addw    $0x20, loadloc+2
 
         popa
         pop     %bp
@@ -316,6 +355,8 @@ showmsg:
         #----------------------------------------------------------
         # use ROM-BIOS services to write a message to the screen
         #----------------------------------------------------------
+        pusha
+        push    %es
         push    %cx                     # preserve string-length
         mov     $0x0F, %ah              # get page-number in BH
         int     $0x10                   # request BIOS service
@@ -327,6 +368,8 @@ showmsg:
         mov     $0x0f, %bl              # put text colors in BL
         mov     $0x1301, %ax            # write_string function
         int     $0x10                   # request BIOS service
+        pop     %es
+        popa
         ret
 
 #------------------------------------------------------------------
@@ -348,20 +391,20 @@ progloc:.word   0x0000, 0x1000          # offset, segment
 # location following the last loaded byte
 loadloc:.word   0x0000, 0x07E0          # offset, segment
 #------------------------------------------------------------------
-msg0:   .ascii  "Hit any key to reboot\r\n"  # message-text
-len0:   .short  . - msg0                # length of message-string
-msg1:   .ascii  "Read error\r\n"      # message-text
-len1:   .short  . - msg1                # length of message-string
-msg2:   .ascii  "Signature error\r\n"   # message-text
-len2:   .short  . - msg2                # length of message-string
-ten:    .short  10                      # decimal-system's radix
-mmsg:   .ascii  "\r\n*** DHBW SNP Boot Loader ***\r\n\r\n"
+msg0:   .ascii  "Hit any key to reboot"
+        .equ    msg0_len, (.-msg0)
+msg1:   .ascii  "Read error\r\n"
+        .equ    msg1_len, (.-msg1)
+msg2:   .ascii  "Signature error\r\n"
+        .equ    msg2_len, (.-msg2)
+bootmsg:.ascii  "\r\n*** DHBW SNP Boot Loader ***"
+crlf:   .ascii  "\r\n\r\n"
+        .equ    crlf_len, (.-crlf)
         .ascii  "Real-Mode Memory:"
-mbuf:   .ascii  "    0 KB\r\n\n"        # size to report
-mmlen:  .short  . - mmsg                # message length
-#------------------------------------------------------------------
-theGDT: .quad   0, 0x008F92000000FFFF   # has 4GB data-descriptor
-regGDT: .word   15, theGDT + 0x7C00, 0  # image for register GDTR
+mbuf:   .ascii  "    ? KB\r\n\r\n"      # size to report
+        .equ    bootmsg_len, (.-bootmsg)
+ldmsg:  .ascii  "Starting "
+        .equ    ldmsg_len, (.-ldmsg)
 #------------------------------------------------------------------
         .end                            # nothing more to assemble
 
