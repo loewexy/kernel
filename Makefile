@@ -4,7 +4,9 @@
 #
 #=============================================================================
 
-SUBDIRS     = boot welcome timeoday tickdemo pmhello
+SUBDIRS     = boot libkernel
+SUBDIRS    += welcome timeoday tickdemo
+SUBDIRS    += pmhello pgftdemo
 
 .PHONY: all subdirs $(SUBDIRS)
 .SECONDARY:
