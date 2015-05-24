@@ -33,5 +33,6 @@
 # Include some specific files
 !boot/bootload.bin
 !libkernel/libkernel.a
+!libkernel/obj/start.o
 !stakernel.tar.gz
 

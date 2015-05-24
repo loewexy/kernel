@@ -4,7 +4,7 @@
 #
 #=============================================================================
 
-SUBDIRS     = boot welcome timeoday tickdemo
+SUBDIRS     = boot welcome timeoday tickdemo pmhello
 
 .PHONY: all subdirs $(SUBDIRS)
 .SECONDARY:
