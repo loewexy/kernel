@@ -17,9 +17,11 @@ LDFLAGS     = -melf_i386 --warn-common --fatal-warnings -n
 PS2PDF      = ps2pdf
 A2PS        = a2ps
 AOPT        = --line-numbers=1
+DDOPT       = conv=notrunc status=noxfer
 
-FLP_USF_POS :=  66
-FLP_ELF_POS := 160
+FLP_TOC_POS  := 2878
+FLP_USF_POS  :=   66
+FLP_ELF_POS  :=  322
 
 
 define update-image
@@ -28,8 +30,8 @@ define update-image
     fi;
     @echo DD $1
     @if [ -f $(BOOTLOADER) ]; then \
-        dd conv=notrunc if=$(BOOTLOADER) of=$1 status=noxfer > /dev/null 2>&1 ; \
-        dd conv=notrunc if=$2 of=$1 seek=$3 status=noxfer > /dev/null 2>&1 ; \
+        dd $(DDOPT) if=$(BOOTLOADER) of=$1 ; \
+        dd $(DDOPT) if=$2 of=$1 seek=$3 ; \
     else \
         echo "Error: file" $(BOOTLOADER) "does not exist" ; \
         rm -f $1 ; \

@@ -14,7 +14,7 @@
 # The executable ELF file-image (e.g., 'demoapp') needs to
 # be preinstalled on our disk image starting at block 130,
 # so that our boot loader will read it into memory putting
-# it at linear address 0x00018000.
+# it at linear address 0x00030000.
 #
 # Later, those portions of the ELF file-image which need to
 # reside during execution at higher addresses (i.e., in the
@@ -51,7 +51,9 @@
 #-----------------------------------------------------------------
 # C O N S T A N T S
 #-----------------------------------------------------------------
+        #----------------------------------------------------------
         # equates for Elf32 file-format (derived from 'elf.h')
+        #----------------------------------------------------------
         .equ    ELF_SIG,  0x464C457F    # ELF-file's 'signature'
         .equ    ELF_32,            1    # Elf_32 file format
         .equ    ET_EXEC,           2    # Executable file type
@@ -69,6 +71,9 @@
         .equ    p_filesz,       0x10    # offset to seg size in file
         .equ    p_memsz,        0x14    # offset to seg size in mem
 
+        #----------------------------------------------------------
+        # equates for ISRs/IRQs
+        #----------------------------------------------------------
         .equ    IRQ_PIT_ID,     0x00
         .equ    IRQ_KBD_ID,     0x01
         .equ    ISR_DBG_ID,     0x01
@@ -79,9 +84,10 @@
 # S I G N A T U R E
 #==================================================================
         .section        .signature, "a", @progbits
-        .word   signame_size
-signame:.ascii  "ELFEXEC"
-        .equ    signame_size, (.-signame)
+        .long   progname_size
+progname:
+        .ascii  "ELFEXEC"
+        .equ    progname_size, (.-progname)
         .byte   0
 
 
@@ -98,11 +104,11 @@ signame:.ascii  "ELFEXEC"
 theGDT:
         .include "comgdt.inc"
         #----------------------------------------------------------
-        # Code/Data, 32 bit, Byte, Priv 0, Type 0x00, 'Read-Only'
-        # Base Address: 0x00018000   Limit: 0x0000ffff
-        .equ    sel_fs, (.-theGDT)+0    # selector for file-image
-        .globl  sel_fs
-        .quad   0x004090018000FFFF      # file segment-descriptor
+        # Code/Data, 32 bit, 4kB, Priv 0, Type 0x00, 'Read-Only'
+        # Base Address: 0x00100000   Limit: 0x000000ff
+        .equ    sel_extmem, (.-theGDT)+0 # selector for file-image
+        .globl  sel_extmem
+        .quad   0x00C09010000000FF      # file segment-descriptor
         #----------------------------------------------------------
         # Code/Data, 32 bit, 4kB, Priv 3, Type 0x0a, 'Execute/Read'
         # Base Address: 0x00000000   Limit: 0x0001ffff
@@ -117,7 +123,7 @@ theGDT:
         .quad   0x00C1F2000000FFFF      # data segment-descriptor
         #----------------------------------------------------------
         .equ    selTSS, (.-theGDT)+0    # selector for Task-State
-        .word   limTSS, theTSS+0x2000, 0x8901, 0x0000  # task descriptor
+        .word   limTSS, theTSS+0x0000, 0x8902, 0x0000  # task descriptor
         #----------------------------------------------------------
         .equ    limGDT, (. - theGDT)-1  # our GDT's segment-limit
 #------------------------------------------------------------------
@@ -125,7 +131,7 @@ theGDT:
         .align  16
         .global regGDT
 regGDT: .word   limGDT
-        .long   theGDT+0x12000          # create linear address
+        .long   theGDT+0x20000          # create linear address
 #------------------------------------------------------------------
 # T A S K   S T A T E   S E G M E N T S
 #------------------------------------------------------------------
@@ -138,6 +144,12 @@ theTSS: .long   0x00000000              # back-link field (unused)
 #------------------------------------------------------------------
 tossav: .space  6                       # 48-bit pointer ss:esp
 #------------------------------------------------------------------
+        .align  4
+dr7sav: .space  4                       # DR7 copy
+#------------------------------------------------------------------
+        .align  4
+inscnt: .space  8
+#------------------------------------------------------------------
 
 #==================================================================
 # S E C T I O N   T E X T
@@ -149,15 +161,10 @@ tossav: .space  6                       # 48-bit pointer ss:esp
         .global main
 main:
         #----------------------------------------------------------
-        # save stack-address (we use it when returning to 'start')
-        # use stack segment selector in order to have write access
+        # establish our Task-State Segment and a new ring-0 stack
         #----------------------------------------------------------
         mov     %esp, tossav+0
         mov     %ss,  tossav+4
-
-        #----------------------------------------------------------
-        # establish our Task-State Segment and a new ring-0 stack
-        #----------------------------------------------------------
         mov     $selTSS, %ax
         ltr     %ax
         lss     theTSS+4, %esp
@@ -180,14 +187,28 @@ main:
         # verify ELF file's presence and 32-bit 'executable'.
         # address the elf headers using the FS segment register
         #----------------------------------------------------------
-        mov     $sel_fs, %ax
+        mov     $sel_extmem, %ax
         mov     %ax, %fs
         cmpl    $ELF_SIG, %fs:e_ident   # check ELF-file signature
-        jne     elf_error               #   no, handle elf error
+        jne     .Lelferror              #   no, handle elf error
         cmpb    $ELF_32, %fs:e_class    # check file class is 32-bit
-        jne     elf_error               #   no, handle elf error
+        jne     .Lelferror              #   no, handle elf error
         cmpw    $ET_EXEC, %fs:e_type    # check type is 'executable'
-        jne     elf_error               #   no, handle elf error
+        jne     .Lelferror              #   no, handle elf error
+
+        #----------------------------------------------------------
+        # save copy of current DR7 settings
+        #----------------------------------------------------------
+        mov     %dr7, %eax
+        mov     %eax, dr7sav
+
+        #----------------------------------------------------------
+        # set new output screen
+        #----------------------------------------------------------
+        xor     %eax, %eax
+        inc     %eax
+        movb    %al, (scnid)
+        call    screen_sel_page
 
         #----------------------------------------------------------
         # setup segment-registers for the Linux application
@@ -211,7 +232,7 @@ main:
         # transfer control to the Linux application in ring3
         #----------------------------------------------------------
         pushl   $userDS                 # selector for 'data'
-        pushl   $0x00040000             # top of ring's stack
+        pushl   $0x00050000             # top of ring's stack
         pushl   $userCS                 # selector for 'code'
         pushl   %fs:e_entry             # program entry-point
 
@@ -226,24 +247,44 @@ main:
         #----------------------------------------------------------
         lret
 
-elf_error:
+.Lelferror:
+        #-----------------------------------------------------------
+        # print error message
+        #-----------------------------------------------------------
+        lea     elferrmsg, %esi
+        mov     $elferrmsglen, %ecx
+        call    screen_write
 
 finis:
-        #-----------------------------------------------------------
-        # disable hardware interrupts
-        #-----------------------------------------------------------
-        cli
-
         #-----------------------------------------------------------
         # load appropriate ring0 data segment descriptor
         #-----------------------------------------------------------
         mov     $privDS, %ax
         mov     %ax, %ds
 
+        call    print_exit_msg
+
+        #-----------------------------------------------------------
+        # disable hardware interrupts
+        #-----------------------------------------------------------
+        cli
+
         #-----------------------------------------------------------
         # reprogram PICs to their original setting
         #-----------------------------------------------------------
         call    remap_isr_rm
+
+        #-----------------------------------------------------------
+        # recover original DR7 contents
+        #-----------------------------------------------------------
+        mov     dr7sav, %eax
+        mov     %eax, %dr7
+
+        #----------------------------------------------------------
+        # reset output screen
+        #----------------------------------------------------------
+        xor     %eax, %eax
+        call    screen_sel_page
 
         #-----------------------------------------------------------
         # recover former stack
@@ -257,19 +298,17 @@ finis:
         .align   4
 finmsg: .ascii  "\n\nProgram finished. "
         .ascii  "Press any key to return to bootloader\n"
-        .equ    finmsglen, (. - finmsg) # message-length
+        .equ    finmsglen, (.-finmsg)
+elferrmsg:
+        .ascii  "\nERROR: Cannot load ELF image.\n"
+        .equ    elferrmsglen, (.-elferrmsg)
 #------------------------------------------------------------------
         .section        .text
         .code32
-        .type    bail_out, @function
-        .global  bail_out
-        .align   16
-bail_out:
-        #-----------------------------------------------------------
-        # load ring0 data segment descriptor
-        #-----------------------------------------------------------
-        mov     $privDS, %ax
-        mov     %ax, %ds
+        .type   print_exit_msg, @function
+        .global print_exit_msg
+        .align  8
+print_exit_msg:
         #-----------------------------------------------------------
         # print out program completion message
         #-----------------------------------------------------------
@@ -281,11 +320,18 @@ bail_out:
         # now await the release of a user's keypress
         #----------------------------------------------------------
         sti
-waitkey:
+.Lwaitkey:
         hlt
-        cmp     $0, (lastkey)
-        je      waitkey
+        cmpb    $0, (lastkey)
+        je      .Lwaitkey
+        ret
+#------------------------------------------------------------------
 
+
+        .type   bail_out, @function
+        .global bail_out
+        .align  8
+bail_out:
         #----------------------------------------------------------
         # terminate this demo
         #----------------------------------------------------------
@@ -354,7 +400,7 @@ isrSNP:
         #-----------------------------------------------------------
         # setup segment-registers for 'loading' program-segments
         #-----------------------------------------------------------
-        mov     $sel_fs, %ax            # address ELF file-image
+        mov     $sel_extmem, %ax        # address ELF file-image
         mov     %ax, %ds                #    with DS register
         mov     $userDS, %ax            # address entire memory
         mov     %ax, %es                #    with ES register
@@ -363,30 +409,30 @@ isrSNP:
         #-----------------------------------------------------------
         # extract load-information from the ELF-file's image
         #-----------------------------------------------------------
-        mov     e_phoff, %ebx       # segment-table's offset
-        movzxw  e_phnum, %ecx       # count of table entries
-        movzxw  e_phentsize, %edx   # length of table entries
+        mov     e_phoff, %ebx           # segment-table's offset
+        movzxw  e_phnum, %ecx           # count of table entries
+        movzxw  e_phentsize, %edx       # length of table entries
 
-nxseg:
+.Lnxseg:
         push    %ecx                    # save outer loop-counter
         mov     p_type(%ebx), %eax      # get program-segment type
         cmp     $PT_LOAD, %eax          # segment-type 'LOADABLE'?
-        jne     fillx                   # no, loading isn't needed
+        jne     .Lfillx                 # no, loading isn't needed
         mov     p_offset(%ebx), %esi    # DS:ESI is segment-source
         mov     p_paddr(%ebx), %edi     # ES:EDI is desired address
         mov     p_filesz(%ebx), %ecx    # ECX is length for copying
-        jecxz   copyx                   # maybe copying is skipped
+        jecxz   .Lcopyx                 # maybe copying is skipped
         rep     movsb                   # 'load' program-segment
-copyx:
+.Lcopyx:
         mov     p_memsz(%ebx), %ecx     # segment-size in memory
         sub     p_filesz(%ebx), %ecx    # minus its size in file
-        jecxz   fillx                   # maybe fill is unneeded
+        jecxz   .Lfillx                 # maybe fill is unneeded
         xor     %al, %al                # use zero for filling
         rep     stosb                   # clear leftover space
-fillx:
+.Lfillx:
         pop     %ecx                    # recover outer counter
         add     %edx, %ebx              # advance to next record
-        loop    nxseg                   # process another record
+        loop    .Lnxseg                 # process another record
 
         #-----------------------------------------------------------
         # now mark segment-descriptor as 'present'
@@ -441,20 +487,47 @@ fillx:
 #    +-----------------+
 #    |       EBP       |  <-- ebp
 #    +=================+
-#    | DR7             |   -4
+#    | INS WORD        |  -4
 #    +-----------------+
-#    | DR6             |   -8
+#    | CNT             |  -8
 #    +-----------------+
-#    | DR1             |  -12
+#    | DR7             |  -12
 #    +-----------------+
-#    | DR0             |  -16
+#    | DR6             |  -16
+#    +-----------------+
+#    | DR2             |  -20
+#    +-----------------+
+#    | DR1             |  -24
+#    +-----------------+
+#    | DR0             |  -28
 #    +-----------------+
 #
 #-----------------------------------------------------------------
         .section        .data
+#-----------------------------------------------------------------
         .align   4
 preval1:.space  20 * 4, 0
-preval2:.space   4 * 4, 0
+preval2:.space   8 * 4, 0
+#-----------------------------------------------------------------
+dbgname:.ascii  "DR0 DR1 DR2 DR6 DR7 CNT INS "
+        .equ    DBG_LEN, .-dbgname
+        .equ    DBG_NUM, (.-dbgname)/4  # number of array entries
+        .equ    DR0_OFF, -28
+        .equ    DR7_OFF, -12
+        .equ    INS_OFF, -4
+#-----------------------------------------------------------------
+regname:.ascii  " GS  FS  ES  DS  SS  CS "
+        .ascii  "EDI ESI EBP ESP EBX EDX ECX EAX "
+        .ascii  "EIP "
+        .ascii  "EFL "
+        .equ    REG_LEN, .-regname
+        .equ    REG_NUM, (.-regname)/4  # number of array entries
+regidx: .byte    0,  4,  8, 12  # GS, FS, ES, DS
+        .byte   72, 60          # SS, CS
+        .byte   16, 20, 24, 68  # EDI, ESI, EBP, ESP
+        .byte   32, 36, 40, 44  # EBX, EDX, ECX, EAX
+        .byte   56, 64          # EIP, EFL
+regloc: .long   0
 #-----------------------------------------------------------------
         .section        .text
         .code32
@@ -465,30 +538,12 @@ preval2:.space   4 * 4, 0
         .align   16
 isrDBG:
         #-----------------------------------------------------------
-        # ISR stub disables interrupts, so we need to re-enable them
-        # in order to be able to capture keybaord interrupts while
-        # waiting in this handler. This is probably not the most sane
-        # solution...
-        #-----------------------------------------------------------
-        sti
-
-        #-----------------------------------------------------------
-        # setup stack frame access via ebp
+        # setup stack frame access via ebp and use edx to access
+        # caller stack frame
         #-----------------------------------------------------------
         enter   $0, $0
         mov     8(%ebp), %edx           # read ISR stack frame ptr
-
-        #-----------------------------------------------------------
-        # ok, let's display the Debug Registers, too
-        #-----------------------------------------------------------
-        mov     %dr7, %eax
-        push    %eax                    # push value from DR7
-        mov     %dr6, %eax
-        push    %eax                    # push value from DR6
-        mov     %dr1, %eax
-        push    %eax                    # push value from DR1
-        mov     %dr0, %eax
-        push    %eax                    # push value from DR0
+        lea     theGDT, %ebx            # EBX = offset for GDT
 
         #-----------------------------------------------------------
         # address ring0 data segment with DS register
@@ -497,13 +552,51 @@ isrDBG:
         mov     %ax, %ds                #   with DS register
 
         #-----------------------------------------------------------
+        # ok, let's display the Debug Registers, too
+        #-----------------------------------------------------------
+        pushl   $0                      # dummy value for instruction word
+        pushl   inscnt
+        mov     %dr7, %eax
+        push    %eax                    # push value from DR7
+        mov     %dr6, %eax
+        push    %eax                    # push value from DR6
+        mov     %dr2, %eax
+        push    %eax                    # push value from DR2
+        mov     %dr1, %eax
+        push    %eax                    # push value from DR1
+        mov     %dr0, %eax
+        push    %eax                    # push value from DR0
+
+        mov     $REG_NUM, %ecx
+.Lregcopy:
+        movzxb  regidx-1(,%ecx,1), %eax
+        movl    %ss:(%edx,%eax,1), %eax
+        push    %eax
+        loop    .Lregcopy
+        mov     %esp, regloc
+
+        #-----------------------------------------------------------
+        # ISR stub disables interrupts, so we need to re-enable them
+        # in order to be able to capture keybaord interrupts while
+        # waiting in this handler. This is probably not the most sane
+        # solution...
+        #-----------------------------------------------------------
+        sti
+
+        #-----------------------------------------------------------
+        # increment 64-bit instruction counter
+        #-----------------------------------------------------------
+        addl    $1, inscnt+0
+        adcl    $0, inscnt+4
+
+        #-----------------------------------------------------------
         # examine the Debug Status Register DR6
         #-----------------------------------------------------------
         mov     %dr6, %eax              # examine register DR6
         test    $0x0000000F, %eax       # any breakpoints?
-        jz      nobpt                   # no, keep RF-flag
+        jz      .Lnobpt                 # no, keep RF-flag
         btsl    $16, %ss:64(%edx)       # else set RF-flag
-nobpt:
+.Lnobpt:
         #-----------------------------------------------------------
         # load CS:EIP return address stored on stack into FS:ESI
         #-----------------------------------------------------------
@@ -512,7 +605,6 @@ nobpt:
         #-----------------------------------------------------------
         # pick the selector's descriptor-table
         #-----------------------------------------------------------
-        lea     theGDT, %ebx            # EBX = offset for GDT
         mov     %fs, %ecx               # copy selector to ECX
         and     $0xFFF8, %ecx           # isolate selector-index
 
@@ -532,13 +624,13 @@ nobpt:
         # set by the trap exception
         #-----------------------------------------------------------
         mov     %fs:(%esi), %eax
-        mov     %eax, %ss:52(%edx)
+        mov     %eax, INS_OFF(%ebp)
 
         #-----------------------------------------------------------
         # set breakpoint trap after any 'int-nn' instruction
         #-----------------------------------------------------------
         cmp     $0xCD, %al              # opcode is 'int-nn'?
-        jne     nobrk                   # no, don't set breakpoint
+        jne     .Lnobrk                 # no, don't set breakpoint
         add     $2, %esi                # else point past 'int-nn'
 
         #-----------------------------------------------------------
@@ -556,19 +648,19 @@ nobpt:
         #-----------------------------------------------------------
         add     %eax, %esi              # add segbase to offset
         mov     %esi, %dr0              # breakpoint into DR0
-        mov     %esi, -16(%ebp)         # and also update DR0 on the stack
+        mov     %esi, DR0_OFF(%ebp)     # and also update DR0 on the stack
 
         #-----------------------------------------------------------
         # activate the code-breakpoint in register DR0
         #-----------------------------------------------------------
         mov     %dr7, %eax              # get current DR7 settings
         and     $0xFFF0FFFC, %eax       # clear the G0 and L0 bits
-        or      $0x00000001, %eax       # enable L0 code-breakpoint
+        or      $0x00000003, %eax       # enable G0/L0 code-breakpoint
         mov     %eax, %dr7              # update settings in DR7
-        mov     %eax, -4(%ebp)          # and also update DR7 on the stack
-        jmp     printstack
+        mov     %eax, DR7_OFF(%ebp)     # and also update DR7 on the stack
+        jmp     .Lprintstack
 
-nobrk:
+.Lnobrk:
         #-----------------------------------------------------------
         # clear instruction-breakpoint address in DR0
         #-----------------------------------------------------------
@@ -586,52 +678,60 @@ nobrk:
         # status when the breakpoint is hit.
         #-----------------------------------------------------------
 
-printstack:
+.Lprintstack:
         pushl   $0                      # do not highlight any registers
-        pushl   $65
+        pushl   $65                     # set display column
         pushl   $0x9e0faf               # white,green   white, black
-        pushl   $INT_NUM
+        pushl   $REG_NUM
         pushl   $preval1
-        pushl   $intname
-        pushl   %edx
+        pushl   $regname
+        pushl   regloc
         call    print_stacktrace
+        # note: post-call stack cleanup done by leave instruction below
 
         #-----------------------------------------------------------
         # highlight breakpoints in register DR6
         #-----------------------------------------------------------
         mov     %dr6, %eax
-        and     $0x00000003, %eax
+        # only highlight breakpoint in DR0 and DR1
+        and     $0x00000003,%eax
         pushl   %eax
-        pushl   $50
+        pushl   $50                     # set display column
         pushl   $0x9e0faf               # white,green   white, black
         pushl   $DBG_NUM
         pushl   $preval2
         pushl   $dbgname
-        lea     -16(%ebp), %eax
+        lea     -DBG_LEN(%ebp), %eax
         pushl   %eax
         call    print_stacktrace
+        # note: post-call stack cleanup done by leave instruction below
 
         #-----------------------------------------------------------
         # now await the release of a user's keypress
         #-----------------------------------------------------------
-pollkey:
+.Lpollkey:
         hlt
-        cmp     $0, (lastkey)
-        je      pollkey
-        cmp     $'r', (lastkey)
-        jne     norun
+        cmpb    $0, (lastkey)
+        je      .Lpollkey
+        cmpb    $'r', (lastkey)
+        jne     .Lnorun
 
         #-----------------------------------------------------------
         # disable any active debug-breakpoints and clear TF-Flag,
         # in order that the remainder of the loaded program will be
         # executed until its end without single-stepping
         #-----------------------------------------------------------
-        xor     %eax, %eax              # clear general register
+        mov     %dr7, %eax              # get current DR7 settings
+        and     $0x0000040C, %eax       # clear the G0 and L0 bits
         mov     %eax, %dr7              # and load zero into DR7
-        btrl    $8, 64(%edx)            # clear Trap Flag
-norun:
+        btrl    $8, %ss:64(%edx)        # clear Trap Flag
+.Lnorun:
         movb    $0, (lastkey)
 
+        #-----------------------------------------------------------
+        # erase local stack frame and reestablish original stack
+        # pointer. Finally, return to caller.
+        #-----------------------------------------------------------
         leave
         ret
 
@@ -658,12 +758,15 @@ norun:
 #-----------------------------------------------------------------
         .section        .data
         .align   4
-status: .ascii  "00:00:00"
-        .ascii  "                                        "
-        .ascii  "                                        "
-        .globl  ticks
-ticks:  .long   0
+status: .ascii  "HH:MM:SS  "            # time string
+tickmsg:.ascii  "__________ "           # ticks (dec)
+        .space  73 - (.-status), ' '
+        .ascii  "SCN #"
+scnnum: .ascii  "  "
+        .align  4
 prevticks: .long   0
+scnid:     .byte   0
+prevscnid: .byte   0
 #-----------------------------------------------------------------
         .section        .text
         .code32
@@ -671,6 +774,9 @@ prevticks: .long   0
         .global irqPIT
         .align   16
 irqPIT:
+        #-----------------------------------------------------------
+        # setup stack frame access via ebp
+        #-----------------------------------------------------------
         enter   $0, $0
 
         #-----------------------------------------------------------
@@ -678,10 +784,10 @@ irqPIT:
         #-----------------------------------------------------------
         incl    %fs:N_TICKS             # increment tick-count
         cmpl    $HOURS24, %fs:N_TICKS   # past midnight?
-        jl      isok                    # no, don't rollover yet
+        jl      .Lisok                  # no, don't rollover yet
         movl    $0, %fs:N_TICKS         # else reset count to 0
         movb    $1, %fs:TM_OVFL         # and set rollover flag
-isok:
+.Lisok:
 
         #-----------------------------------------------------------
         # calculate total seconds (= N_TICKS * 65536 / 1193182)
@@ -703,14 +809,22 @@ isok:
         sub     %ecx, %edx      # CF=1 if 2*rem < divisor
         cmc                     # CF=1 if 2*rem >= divisor
         adc     $0, %eax        # ++EAX if 2+rem >= divisor
-        mov     %eax, ticks
 
+        mov     (scnid), %dl
+        cmp     %dl, (prevscnid)
+        jne     .Ldoupdate
+.Lcheckticks:
         cmp     %eax, prevticks
-        je      skip_update
-
+        je      .Lskipupdate
         mov     %eax, prevticks
+.Ldoupdate:
+        mov     %dl, (prevscnid)
+        add     $0x30, %dl
+        mov     %dl, (scnnum)
 
+        incl    ticks
         mov     $SECS_PER_DAY, %ebx
+        movl    ticks, %eax
         xor     %edx, %edx
         div     %ebx
 
@@ -755,19 +869,32 @@ isok:
         add     $0x3030, %ax    # convert al and ah to BCD digits
         mov     %ax, (%edi)
 
+        mov     ticks, %eax
+        lea     tickmsg, %edi
+        mov     $10, %cx
+        call    uint32_to_dec
+
         #-----------------------------------------------------------
         # loop to write character-codes to the screen
         #-----------------------------------------------------------
         lea     status, %esi            # message-offset into ESI
+        movzxb  (scnid), %bx
+        xor     %eax, %eax
+        imul    $0x1000, %bx, %ax
         mov     $160*24, %edi
-        mov     $79, %ecx               # message-length into ECX
+        add     %eax, %edi
+        mov     $80, %ecx               # message-length into ECX
         cld
         mov     $0x7020, %ax            # normal text attribute
-cpchr:  lodsb                           # fetch next character
+.Lcpchr:
+        lodsb                           # fetch next character
         stosw                           # write to the display
-        loop    cpchr
+        loop    .Lcpchr
 
-skip_update:
+        movzxb  (scnid), %eax
+        call    screen_sel_page
+.Lskipupdate:
+
         leave
         ret
 
@@ -775,9 +902,27 @@ skip_update:
 #==================================================================
 #===========      HANDLER FOR KEYBOARD INTERRUPTS      ============
 #==================================================================
+#
+#-----------------------------------------------------------------
+# Stack Frame Layout
+#-----------------------------------------------------------------
+#
+#                 Byte 0
+#                      V
+#    +=================+
+#    |  Int Stack Ptr  |  +8
+#    +-----------------+
+#    |  Return Address |  +4
+#    +-----------------+
+#    |       EBP       |  <-- ebp
+#    +=================+
+#
+#-----------------------------------------------------------------
         .section        .data
-        .align   4
-lastkey:.byte   0
+            .align   4
+lastkey:    .byte       0
+scancode:   .byte       0
+#-----------------------------------------------------------------
         .section        .text
         .code32
         .type   irqKBD, @function
@@ -785,23 +930,44 @@ lastkey:.byte   0
         .align   16
 irqKBD:
         #-----------------------------------------------------------
-        # preserve all registers, including modified segment registers
+        # setup stack frame access via ebp and use edx to access
+        # caller stack frame
         #-----------------------------------------------------------
         enter   $0, $0
+        mov     8(%ebp), %edx           # read ISR stack frame ptr
 
         in      $0x64, %al              # poll keyboard status
         test    $0x01, %al              # new scancode ready?
-        jz      ignore                  # no, false alarm
+        jz      .Lkbdend                #   no, then don't return char
 
         in      $0x60, %al              # input the new scancode
         test    $0x80, %al              # was a key released?
-        jz      ignore                  # no, wait for a release
+        jz      .Lkbdend                #   no, then don't return char
+
         and     $0x0000007f, %eax       # mask for 7-bit ASCII
+        mov     %al, (scancode)
         mov     kbdus(%eax), %al        # translate scancode into ASCII
+        cmp     $127, %al               # is char outside ASCII range?
+        ja      .Lnoascii               #   yes, then check special char
         mov     %al, (lastkey)
-ignore:
+.Lkbdend:
         leave
         ret
+.Lnoascii:
+        cmp     $129, %al
+        jne     .Lnopgdn
+        decb    (scnid)
+        andb    $0x3, (scnid)
+        jmp     .Lnopgup
+.Lnopgdn:
+        cmp     $130, %al
+        jne     .Lnopgup
+        incb    (scnid)
+        andb    $0x3, (scnid)
+.Lnopgup:
+        leave
+        ret
+
 
 #------------------------------------------------------------------
         .end
