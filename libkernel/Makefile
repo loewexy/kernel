@@ -44,6 +44,10 @@ $(OBJDIR)/%.o : $(SRCDIR)/%.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
+$(COBJS) : ../common_defs.mk
+$(AOBJS) : ../common_defs.mk
+$(ASMOBJS) : ../common_defs.mk
+
 .PHONY: clean
 clean:
 	rm -f $(TARGET) $(OBJDIR)/*.o $(OBJDIR)/*.lst

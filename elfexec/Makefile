@@ -33,6 +33,7 @@ $(PROG).elf : $(PROG).o $(LIBKERNEL) $(LDSCRIPT)
 	@size -Bx $@
 
 $(PROG).o : ../inc/comgdt.inc
+$(PROG).o : ../common_defs.mk
 
 .PHONY: clean
 clean:

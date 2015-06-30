@@ -10,9 +10,13 @@ AS          = as
 LD          = ld
 AR          = ar
 AROPT       = rcsv
+ASOPT       = -g --32 -I../inc
+ASOPT      += --defsym __DHBW_KERNEL__=1
 NASM        = nasm
 NASMOPT     = -g -f elf -F dwarf
-CFLAGS      = -m32 -Wall -Werror -Wextra -g -O1 -std=gnu99
+CFLAGS      = -m32 -Wall -Werror -Wextra -g -O2 -std=gnu99 -D__DHBW_KERNEL__
+CFLAGS     += -D__DHBW_KERNEL__
+CFLAGS     += -fno-omit-frame-pointer
 LDFLAGS     = -melf_i386 --warn-common --fatal-warnings -n
 PS2PDF      = ps2pdf
 A2PS        = a2ps
@@ -45,9 +49,13 @@ endef
 %.sym : %.elf
 	objcopy --only-keep-debug $< $@
 
+%.o : %.c
+	@echo CC $<
+	@$(CC) $(CFLAGS) -o $*.o -c $<
+
 %.o %.lst : %.s
 	@echo AS $<
-	@$(AS) --32 -I../inc -almgns=$*.lst -o $*.o -c $<
+	@$(AS) $(ASOPT) -almgns=$*.lst -o $*.o -c $<
 
 %.bin %.lst : %.asm
 	@echo NASM $<

@@ -7,6 +7,7 @@
 SUBDIRS     = boot libkernel
 SUBDIRS    += welcome timeoday tickdemo
 SUBDIRS    += pmhello pgftdemo
+SUBDIRS    += dasboot demoapps tools elfexec
 
 .PHONY: all subdirs $(SUBDIRS)
 .SECONDARY:
@@ -18,8 +19,10 @@ subdirs : $(SUBDIRS)
 $(SUBDIRS):
 	$(MAKE) -C $@
 
-timeoday: boot
-pmtimer: boot
+timeoday:    boot
+pmtimer:     boot
+elfexec:     dasboot
+$(SUBDIRS):  common_defs.mk
 
 .PHONY: clean
 clean:

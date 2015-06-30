@@ -29,6 +29,7 @@ $(PROG).elf : $(PROG).o $(LIBKERNEL) $(LDSCRIPT)
 
 
 $(PROG).o : ../inc/comgdt.inc
+$(PROG).o : ../common_defs.mk
 
 .PHONY: clean
 clean:

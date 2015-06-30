@@ -29,6 +29,8 @@ $(PROG).bin : $(PROG).o $(LDSCRIPT)
 	@echo LD -o $@
 	@$(LD) $(LDFLAGS) $< -T $(LDSCRIPT) -o $@
 
+$(PROG).o : ../common_defs.mk
+
 .PHONY: clean
 clean:
 	rm -f *.o *.lst *.bin $(TARGETS)

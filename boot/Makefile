@@ -6,32 +6,23 @@
 
 
 include ../common_defs.mk
-PROG        = bootload
 
-TARGETS = $(PROG).bin
+PROG        = bootload
+LDSCRIPT    = ldscript
+TARGETS     = $(PROG).bin
 
 .PHONY: all
 .SECONDARY:
 
 all: $(TARGETS)
 
-$(PROG).bin : $(PROG).elf
-	objcopy -O binary $< $@
-
-$(PROG).elf : $(PROG).o ldscript
+$(PROG).elf : $(PROG).o $(LDSCRIPT)
 	@echo LD -o $@
-	@$(LD) $(LDFLAGS) $< -T ldscript -o $@
+	@$(LD) $(LDFLAGS) -Map=$(PROG).map --cref -T $(LDSCRIPT) $(PROG).o -o $@
+	@size -A $@
 
-%.o %.lst : %.s
-	@echo AS $<
-	@$(AS) --32 -almgns=$*.lst -o $*.o -c $<
-
-%.bin %.lst : %.asm
-	@echo NASM $<
-	@$(NASM) $(NASMOPT) -l $*.lst -o $@ $<
-
+$(PROG).o : ../common_defs.mk
 
 .PHONY: clean
 clean:
-	rm -f *.o *.lst *.elf $(TARGETS)
-
+	rm -f *.o *.lst *.map *.sym *.bin *.elf $(TARGETS)

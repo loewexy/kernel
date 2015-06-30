@@ -23,7 +23,9 @@ $(PROG).elf : $(OBJS) $(LDSCRIPT)
 	@$(LD) $(LDFLAGS) -Map=$(PROG).map --cref -T $(LDSCRIPT) $(OBJS) -o $@
 	@size -A $@
 
+$(PROG).o : ../common_defs.mk
+
 .PHONY: clean
 clean:
-	rm -f *.o *.lst *.bin *.map *.elf $(TARGETS)
+	rm -f *.o *.lst *.map *.sym *.bin *.elf $(TARGETS)
 
