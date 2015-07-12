@@ -24,8 +24,6 @@ progname:
 
         .section        .data
 
-        .equ    DATA_START, 0x20000
-
 #------------------------------------------------------------------
 # G L O B A L   D E S C R I P T O R   T A B L E
 #------------------------------------------------------------------
@@ -37,10 +35,16 @@ theGDT:
         .equ    limGDT, (. - theGDT)-1  # our GDT's segment-limit
 #------------------------------------------------------------------
         # image for GDTR register
+        #
+        #----------------------------------------------------------
+        # Note: the linear address offset of the data segment needs
+        #       to be added to theGDT at run-time before this GDT
+        #       is installed
+        #----------------------------------------------------------
         .align  16
         .global regGDT
 regGDT: .word   limGDT
-        .long   theGDT+DATA_START       # create linear address
+        .long   theGDT
 #------------------------------------------------------------------
 # I N T E R R U P T   D E S C R I P T O R   T A B L E
 #------------------------------------------------------------------
@@ -61,10 +65,16 @@ theIDT: # allocate 256 gate-descriptors
         .equ    limIDT, (.-theIDT)-1    # this IDT's segment_limit
 #------------------------------------------------------------------
         # image for IDTR register
+        #
+        #----------------------------------------------------------
+        # Note: the linear address offset of the data segment needs
+        #       to be added to theIDT at run-time before this IDT
+        #       is installed
+        #----------------------------------------------------------
         .align  16
         .global regIDT
 regIDT: .word   limIDT
-        .long   theIDT+DATA_START       # create linear address
+        .long   theIDT
 #------------------------------------------------------------------
 pmmsg:  .ascii  " Hello from protected mode "   # message's text
 pmlen:  .long  . - pmmsg                # size of message string

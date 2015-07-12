@@ -22,6 +22,7 @@ ASMSRCS    := $(wildcard $(SRCDIR)/*.asm)
 COBJS      := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(CSRCS))
 AOBJS      := $(patsubst $(SRCDIR)/%.s,$(OBJDIR)/%.o,$(ASRCS))
 ASMOBJS    := $(patsubst $(SRCDIR)/%.asm,$(OBJDIR)/%.o,$(ASMSRCS))
+foo        := $(shell test -d $(OBJDIR) || mkdir -p $(OBJDIR))
 
 TARGET    = $(LIBDIR)/libkernel.a
 

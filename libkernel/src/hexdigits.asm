@@ -2,8 +2,15 @@
 ; Section DATA
 ;-------------------------------------------------------------------
 SECTION .data
-align 4
 
 GLOBAL hex_digits
-hex_digits:    db "0123456789ABCDEF"
+GLOBAL hex_digits_uc
+GLOBAL hex_digits_lc
+
+align 4
+hex_digits_uc:
+hex_digits:    db "0123456789ABCDEF 0"
+
+align 4
+hex_digits_lc: db "0123456789abcdef 0"
 

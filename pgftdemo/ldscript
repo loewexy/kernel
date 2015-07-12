@@ -1,25 +1,34 @@
+/*****************************************/
+/*                                       */
+/*             DHBW KERNEL               */
 /*                                       */
 /* 'ldscript' --- A simple Linker Script */
-/* for use with the GNU linker 'ld' when */ 
-/* producing a binary-format executable. */
+/* for use with the GNU linker 'ld'      */
 /*                                       */
-/* usage:                                */
-/*   $ gcc -c main.cpp                   */
-/*   $ ld main.o -T ldscript -o main.b   */
-
-/* programmer: ALLAN CRUSE */
-/* written on: 02 MAY 2004 */
-/* revised on: 24 MAY 2004 */
+/*****************************************/
 
 SEARCH_DIR("../libkernel/obj");
 OUTPUT_FORMAT("elf32-i386");
 ENTRY(_start);
 
-LD_DATA_ADDR = 0x10000;
-LD_BSS_ADDR  = 0x18000;
-LD_TEXT_START = 0x10000;
-LD_DATA_START = LD_TEXT_START + LD_DATA_ADDR;
-LD_BSS_START  = LD_TEXT_START + LD_BSS_ADDR;
+/*
+ * Linear start address of the binary image
+ */
+LD_IMAGE_START = 0x10000;
+
+/*
+ * Offset of the data segment relative to
+ * the start of the binary image
+ */
+LD_DATA_ADDR  = 0x10000;
+
+/*
+ * Linear start address of the data segment
+ * Data structures such as the GDT, IDT and
+ * paging tables need linear addresses instead
+ * of segmented addresses
+ */
+LD_DATA_START = LD_IMAGE_START + LD_DATA_ADDR;
 
 SECTIONS
 {
@@ -46,7 +55,7 @@ SECTIONS
         data = .; _data = .; __data = .;
         sdata = ADDR(.data);
         *(.data)
-        *(.rodata)
+        *(.rodata*)
         PROVIDE(edata = .);
         . = ALIGN(16);
     }

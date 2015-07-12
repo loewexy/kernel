@@ -19,6 +19,7 @@ SECTION .text
 GLOBAL int_to_hex
 
 int_to_hex:
+        enter   0,0
         push    ebx             ; save used registers on stack
         push    ecx
         push    edx
@@ -35,5 +36,6 @@ int_to_hex:
         pop     edx             ; restore registers from stack
         pop     ecx
         pop     ebx
+        leave
         ret
 

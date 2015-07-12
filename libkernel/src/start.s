@@ -87,7 +87,8 @@ _start:
         #----------------------------------------------------------
         # setup real-mode data segments
         #----------------------------------------------------------
-        mov     $0x2000, %ax
+        mov     $LD_DATA_START, %eax
+        shr     $4, %eax
         mov     %ax, %ds
         mov     %ax, %es
         mov     %ax, %gs
@@ -112,6 +113,7 @@ _start:
         call    detect_memory
 
         call    read_cmos_rtc
+        call    configure_16550_uart
 
         #----------------------------------------------------------
         # enable protected mode
@@ -122,8 +124,13 @@ _start:
 
         #----------------------------------------------------------
         # load new GDT and IDT for protected mode
+        #
+        # Note: logical addresses in regGDT and regIDT need to be
+        #       converted into linear addresses
         #----------------------------------------------------------
+        addl    $LD_DATA_START, (regGDT+2)
         lgdtl   regGDT
+        addl    $LD_DATA_START, (regIDT+2)
         lidtl   regIDT
 
         #----------------------------------------------------------
@@ -164,7 +171,8 @@ rm:
         #----------------------------------------------------------
         # restore real-mode interrupt vector table
         #----------------------------------------------------------
-        mov     $0x2000, %ax
+        mov     $LD_DATA_START, %eax
+        shr     $4, %eax
         mov     %ax, %ds
         lidt    rmIVT
 
@@ -342,6 +350,51 @@ detect_memory:
         leave
         ret
 
+.equ    UART_BASE, 0x03F8       # base i/o-port for UART
+
+#-----------------------------------------------------------------
+        .macro  in8     port
+        push    %dx
+        mov     $\port, %dx
+        in      %dx, %al
+        pop     %dx
+        .endm
+#-----------------------------------------------------------------
+        .macro  out8    data, port
+        push    %ax
+        push    %dx
+        mov     $\port, %dx
+        mov     $\data, %al
+        out     %al, %dx
+        pop     %dx
+        pop     %ax
+        .endm
+#-----------------------------------------------------------------
+
+configure_16550_uart:
+        #----------------------------------------------------------
+        # initialize the UART for 115200 bps, 8-N-1
+        #----------------------------------------------------------
+        out8    0x00, UART_BASE+1       # Interrupt Enable
+        out8    0x07, UART_BASE+2       # Fifo Control: FIFO enable & reset
+        out8    0x83, UART_BASE+3       # Line Control: DLAB
+        out8    0x01, UART_BASE+0       # Divisor Latch LSB
+        out8    0x00, UART_BASE+1       # Divisor Latch MSB
+        out8    0x03, UART_BASE+3       # Line Control: 8N1
+        out8    0x03, UART_BASE+4       # Modem Control: DTR/RTS
+
+        in8     UART_BASE+6             # Modem Status
+        in8     UART_BASE+5             # Line Status
+        in8     UART_BASE+0             # Received Data
+        in8     UART_BASE+2             # Interrupt Identification
+
+        # transmit null-byte (to initiate UART interrupts)
+        mov     $UART_BASE, %dx
+        mov     $0, %al
+        out     %al, %dx
+
+        ret
+
 
 #==================================================================
 # SECTION .data
@@ -352,7 +405,7 @@ detect_memory:
 # protected mode stack pointer and segment
 #------------------------------------------------------------------
         .align  4
-pmstack:.long   0x4000                  # 48-bit ss:esp (32-bit PM)
+pmstack:.long   0x50000                 # 48-bit ss:esp (32-bit PM)
         .word   privSS
 
 #------------------------------------------------------------------
