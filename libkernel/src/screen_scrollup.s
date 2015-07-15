@@ -10,6 +10,13 @@ screen_scrollup:
         push    %ecx
         push    %edi
         push    %esi
+        push    %es
+
+        #----------------------------------------------------------
+        # setup access to CGA video memory using the ES segment
+        #----------------------------------------------------------
+        mov     $sel_cga, %ax
+        mov     %ax, %es
 
         call    screen_get_page
         shl     $12, %eax
@@ -24,6 +31,7 @@ screen_scrollup:
         mov     $80, %ecx
         rep     stosw
 
+        pop     %es
         pop     %esi
         pop     %edi
         pop     %ecx

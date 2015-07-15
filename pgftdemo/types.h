@@ -7,6 +7,7 @@
  * ISO C99: 7.18 Integer types <stdint.h>
  */
 
+#define NULL                    0
 
 #define PACKED __attribute__((packed))
 

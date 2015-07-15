@@ -89,31 +89,24 @@ isrGPF:
         call    print_stacktrace
         add     $7*4, %esp
 
+        #----------------------------------------------------------
+        # print stack trace
+        #----------------------------------------------------------
         pushl   $0
         pushl   $35
         pushl   $0x9e7070
         pushl   $STK_NUM
         pushl   $0
         pushl   $stkname
-        mov     28(%ebp), %eax
-        add     $20, %eax
+        # calculate the stack pointer before the call to this handler
+        lea     68(%ebp), %eax
         pushl   %eax
         call    print_stacktrace
         add     $7*4, %esp
 
         #----------------------------------------------------------
-        # restore the values to the registers we've modified here
+        # NOTE: stack is not cleaned-up and registers are not
+        #       restored before bailing out...
         #----------------------------------------------------------
-        popl    %gs
-        popl    %fs
-        popl    %es
-        popl    %ds
-        popal
-
-        #----------------------------------------------------------
-        # remove interrupt id from stack
-        #----------------------------------------------------------
-        add     $4, %esp
-
         jmp     bail_out
 

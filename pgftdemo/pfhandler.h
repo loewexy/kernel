@@ -20,8 +20,6 @@
 #define PAGES_SWAPPED_START     0x300000
 #define PAGES_SWAPPED_END     (PAGES_SWAPPED_START+PAGES_SWAPPED_NUM*PAGE_SIZE-1)
 
-#define SWAPPED_START_ADDR      0x100000
-
 #define PDE_NUM                     1024
 #define PDE_MAX_INDEX         (PDE_NUM-1)
 #define PDE_SHIFT                     22

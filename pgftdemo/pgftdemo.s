@@ -95,7 +95,7 @@ regGDT: .word   limGDT
 pgdirmsg:
         .ascii  "Page Directory is at linear address 0x"
 pgdiraddr:
-        .ascii  "________\n"
+        .ascii  "________\r\n"
         .equ    pgdirmsg_len, (.-pgdirmsg)
 
 rwchar: .ascii  "RW"

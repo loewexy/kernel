@@ -14,9 +14,11 @@ screen_write:
         pushal
         pushl   %es
 
-        # point ES:EDI to screen-position
-        mov     $sel_es, %ax            # address video memory
-        mov     %ax, %es                #   with ES register
+        #----------------------------------------------------------
+        # setup access to CGA video memory using the ES segment
+        #----------------------------------------------------------
+        mov     $sel_cga, %ax
+        mov     %ax, %es
 
         call    screen_get_pos          # get row,col in DX
         mov     $80, %al                # cells-per-row
@@ -33,13 +35,14 @@ screen_write:
         cld
         mov     $0x07, %ah              # normal text attribute
 nxmchr: lodsb                           # fetch next character
-
+        cmp     $'\n', %al              # newline?
+        je      advok
         cmp     $'\b', %al              # backpsace?
         jne     no_bs
         test    %dl, %dl
         jz      advok
-        push    %edx
         # write character to UART
+        push    %edx
         mov     $UART_BASE+0, %dx       # UART Data i/o-port
         out     %al, %dx                # send character
         pop     %edx
@@ -49,21 +52,25 @@ nxmchr: lodsb                           # fetch next character
         stosw
         jmp     advok
 no_bs:
-        push    %edx
         # write character to UART
+        push    %edx
         mov     $UART_BASE+0, %dx       # UART Data i/o-port
         out     %al, %dx                # send character
         pop     %edx
-        cmp     $'\n', %al              # newline?
-        je      do_nl                   #   yes, do CR/LF
         cmp     $'\r', %al              # carriage return?
-        je      do_cr                   #   yes, do CR
+        je      do_nl                   #   yes, do CR/LF
 
 do_wr:  stosw                           # write to the display
         inc     %dl                     # advance column-number
         cmp     $80, %dl                # end-of-row reached?
         jb      advok                   # no, column is ok
 do_nl:  inc     %dh                     # else advance row-number
+        push    %edx
+        # write character to UART
+        mov     $UART_BASE+0, %dx       # UART Data i/o-port
+        mov     $'\n', %al
+        out     %al, %dx                # send character
+        pop     %edx
 do_cr:  mov     $0, %dl                 # with zero column-number
         cmp     $23, %dh                # bottom-of-screen reached?
         jb      adjpos                  #   no, row is ok

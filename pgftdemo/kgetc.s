@@ -28,15 +28,12 @@ kgetc:
         cmp     $'z', %al
         ja      .Lskipchar
         cmp     $'\r', %al              # check for CR
-        jne     .Lnocr                  # no, then skip LF translation
-        movb    $'\n', (%esi)
-        call    screen_write
-.Lnocr:
+        je      .Lwrite
         cmp     $'\n', %al
-        je      .Llf
+        je      .Lwrite
         cmp     $' ', %al
         jb      .Lskipchar
-.Llf:
+.Lwrite:
         mov     %al, (%esi)
         call    screen_write
 .Lskipchar:

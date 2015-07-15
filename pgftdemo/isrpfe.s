@@ -54,7 +54,7 @@ pgvicaddr:
         .ascii  "________ "
 pgsecaddr:
         .ascii  "________"
-        .ascii  "\n"
+        .ascii  "\r\n"
         .equ    pgftmsg_len, (.-pgftmsg)
 
         .align  4

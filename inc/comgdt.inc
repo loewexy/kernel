@@ -35,8 +35,8 @@
         # Code/Data, 16 bit, Byte, Priv 0, Type 0x02, 'Read/Write'
         # Base Address: 0x000b8000   Limit: 0x00007FFF
         # Used to access CGA Display RAM
-        .equ    sel_es, (.-theGDT)+0    # selector for video area
-        .global sel_es
+        .equ    sel_cga, (.-theGDT)+0   # selector for video area
+        .global sel_cga
         .quad   0x0000920B80007fff      # vram segment-descriptor
         #----------------------------------------------------------
         # Code/Data, 16 bit, Byte, Priv 0, Type 0x02, 'Read/Write'

@@ -14,7 +14,9 @@ ASOPT       = -g --32 -I../inc
 ASOPT      += --defsym __DHBW_KERNEL__=1
 NASM        = nasm
 NASMOPT     = -g -f elf -F dwarf
-CFLAGS      = -m32 -Wall -Werror -Wextra -fno-omit-frame-pointer -g -O2 -std=gnu99 -D__DHBW_KERNEL__
+CFLAGS      = -m32 -Wall -Werror -Wextra -g -O2 -std=gnu99
+CFLAGS     += -D__DHBW_KERNEL__
+CFLAGS     += -fno-omit-frame-pointer -fno-stack-protector -fno-inline
 LDFLAGS     = -melf_i386 --warn-common --fatal-warnings -n
 PS2PDF      = ps2pdf
 A2PS        = a2ps

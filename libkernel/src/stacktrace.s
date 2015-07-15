@@ -54,9 +54,9 @@ print_stacktrace:
         pushl   %es
 
         #----------------------------------------------------------
-        # ok, here we display our stack-frame (with labels)
+        # setup access to CGA video memory using the ES segment
         #----------------------------------------------------------
-        mov     $sel_es, %ax            # address video memory
+        mov     $sel_cga, %ax           # address video memory
         mov     %ax, %es                #   with ES register
 
         cld                             # do forward processing

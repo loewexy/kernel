@@ -41,7 +41,7 @@ SECTIONS
     {
         start.o(.text16)
         *(.text16)
-        . = ALIGN(16);
+        . = ALIGN(4096);
     }
     .text :
     {

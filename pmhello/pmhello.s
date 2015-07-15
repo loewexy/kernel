@@ -89,15 +89,20 @@ pmlen:  .long  . - pmmsg                # size of message string
         .global main
 main:
         enter   $0, $0
-        #pushal
+        push    %es
 
         #----------------------------------------------------------
         # Segment register usage (provided by start.o):
         #   CS - Code Segment
         #   DS - Data Segment
         #   SS - Stack Segment
-        #   ES - CGA Video Memory
         #----------------------------------------------------------
+
+        #----------------------------------------------------------
+        # setup access to CGA video memory using the ES segment
+        #----------------------------------------------------------
+        mov     $sel_cga, %ax
+        mov     %ax, %es
 
         #----------------------------------------------------------
         # copy message string to video memory
@@ -155,7 +160,7 @@ nxchr4:
         #----------------------------------------------------------
         int     $1
 
-        #popal
+        pop     %es
         leave
         ret
 #------------------------------------------------------------------

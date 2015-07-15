@@ -4,36 +4,54 @@
 #==================================================================
         .section        .data
 
-mon_addr:
-        .long 0, 0, 0, 0, 0, 0, 0, 0
-
-errmsg: .ascii  "Syntax Error\n"
+        .align  4
+errmsg: .ascii  "Syntax Error\r\n"
         .equ    errmsg_len, (.-errmsg)
 
-hlpmsg: .ascii  "Monitor Commands:\n"
-        .ascii  "  H           - Help (this text)\n"
-        .ascii  "  Q           - Quit monitor\n"
-        .ascii  "  M           - Show all mapped non-kernel pages\n"
-        .ascii  "  C           - Release allocated pages (except kernel)\n"
-        .ascii  "  D ADDR NUM  - Dump NUM words beginning at address ADDR\n"
-        .ascii  "  P ADDR      - Invalidate TLB entry for virtual address ADDR\n"
-        .ascii  "  R ADDR      - Read from address ADDR\n"
-        .ascii  "  F ADDR WORD - Fill page belonging to ADDR with 32-bit word WORD,\n"
-        .ascii  "                incremented by one for each address step\n"
-        .ascii  "  W ADDR WORD - Write 32-bit word WORD into ADDR\n\n"
-        .ascii  "All addresses/words are in hexadecimal, e.g. 00123ABC\n"
-        .ascii  "Leading zeros can be omitted\n"
-        .ascii  "\n"
+        .align  4
+hlpmsg: .ascii  "Monitor Commands:\r\n"
+        .ascii  "  H           - Help (this text)\r\n"
+        .ascii  "  Q           - Quit monitor\r\n"
+        .ascii  "  M           - Show non-kernel page table entries\r\n"
+        .ascii  "  C           - Release allocated pages (except kernel)\r\n"
+        .ascii  "  D ADDR NUM  - Dump NUM words beginning at address ADDR\r\n"
+        .ascii  "  X ADDR NUM  - Calculate CRC32 for NUM words starting at address ADDR\r\n"
+        .ascii  "  P ADDR      - Invalidate TLB entry for virtual address ADDR\r\n"
+        .ascii  "  R ADDR      - Read from address ADDR\r\n"
+        .ascii  "  F ADDR WORD - Fill page belonging to ADDR with 32-bit word WORD,\r\n"
+        .ascii  "                incremented by one for each address step\r\n"
+        .ascii  "  W ADDR WORD - Write 32-bit word WORD into ADDR\r\n\r\n"
+        .ascii  "All addresses/words are in hexadecimal, e.g. 00123ABC\r\n"
+        .ascii  "Leading zeros can be omitted\r\n"
+        .ascii  "\r\n"
         .equ    hlpmsg_len, (.-hlpmsg)
 
-dumpmsg:.ascii  "________ ________ ________ ________\n"
+        .align  4
+dumpmsg:.ascii  "________ ________ ________ ________\r\n"
         .equ    dumpmsg_len, (.-dumpmsg)
 
-addrmsg:.ascii  "________: ________\n"
+        .align  4
+addrmsg:.ascii  "________: ________\r\n"
         .equ    addrmsg_len, (.-addrmsg)
 
-pagemsg:.ascii  "________: ________ ____\n"
+        .align  4
+pagemsg:.ascii  "________: ________ ____\r\n"
         .equ    pagemsg_len, (.-pagemsg)
+
+        .align  4
+cpuid_features:
+        .long   0
+
+cpuid_avail:
+        .byte   -1
+
+cpuid_sse42_avail:
+        .byte   -1
+
+        .align  4
+mon_addr:
+        .long 0
+
 
 #==================================================================
 # S E C T I O N   T E X T
@@ -51,6 +69,11 @@ run_monitor:
         push    %gs
 
         #----------------------------------------------------------
+        # check cpuid for available features (crc32 instruction)
+        #----------------------------------------------------------
+        call    check_cpuid
+
+        #----------------------------------------------------------
         # setup GS segment register for linear addressing
         #----------------------------------------------------------
         mov     $linDS, %ax
@@ -59,6 +82,7 @@ run_monitor:
         xor     %ecx, %ecx
 .Lloop:
         lea     -256(%ebp), %esi
+        mov     %esi, mon_addr
         call    kgets
         test    %eax, %eax
         mov     %eax, %ecx          # buffer index
@@ -86,6 +110,8 @@ run_monitor:
         je      .Lwriteaddr
         cmpb    $'R', %al
         je      .Lreadaddr
+        cmpb    $'X', %al
+        je      .Lcrcaddr
         cmpb    $'D', %al
         je      .Ldumpaddr
         cmpb    $'F', %al
@@ -139,6 +165,40 @@ run_monitor:
         call    screen_write
         mov     -260(%ebp), %ecx
         jmp     .Lloop
+.Lcrcaddr:
+        cmpb    $1, cpuid_sse42_avail
+        jne     .Lloop
+
+        mov     %ecx, -260(%ebp)
+        inc     %esi
+        # read linear address
+        call    hex2int
+        mov     %eax, %edi
+
+        # read number of words
+        call    hex2int
+
+        xor     %ecx, %ecx
+        xor     %edx, %edx
+        dec     %edx
+.Lcrcloop:
+        crc32l  %gs:(%edi,%ecx,4), %edx
+        inc     %ecx
+        cmp     %eax, %ecx
+        jb      .Lcrcloop
+        xor     $0xffffffff, %edx
+
+        mov     %edx, %eax
+        lea     addrmsg+10, %edi        # pointer to output string
+        mov     $8, %ecx                # number of output digits
+        call    int_to_hex
+
+        lea     addrmsg+10, %esi        # message-offset
+        mov     $addrmsg_len-10, %ecx   # message-length
+        call    screen_write
+
+        mov     -260(%ebp), %ecx
+        jmp     .Lloop
 .Ldumpaddr:
         inc     %esi
         sub     $8, %esp
@@ -146,19 +206,11 @@ run_monitor:
         call    hex2int
         # put linear address onto stack
         mov     %eax, (%esp)
-        mov     %eax, mon_addr
 
         # read number of words
         call    hex2int
         # put number of words onto stack
         mov     %eax, 4(%esp)
-        mov     %eax, mon_addr+4
-
-        #mov     8(%ebp), %ebx    # linear address
-        #mov     %ebx, mon_addr
-        #mov     12(%ebp), %edx   # number of words
-        #mov     %edx, mon_addr+4
-
         call    dump_memory
         add     $8, %esp
         jmp     .Lloop
@@ -170,18 +222,32 @@ run_monitor:
         call    get_page_addr
         test    %eax, %eax
         jz      .Lloop
+
         mov     %eax, %edi
 
         # read fill word
         call    hex2int
 
         xor     %ecx, %ecx
+        xor     %edx, %edx
+        dec     %edx
 .Lfillloop:
         mov     %eax, %gs:(%edi,%ecx,4)
+        crc32l  %gs:(%edi,%ecx,4), %edx
         inc     %eax
         inc     %ecx
         cmp     $1024, %ecx
         jb      .Lfillloop
+        xor     $0xffffffff, %edx
+
+        mov     %edx, %eax
+        lea     addrmsg+10, %edi        # pointer to output string
+        mov     $8, %ecx                # number of output digits
+        call    int_to_hex
+
+        lea     addrmsg+10, %esi        # message-offset
+        mov     $addrmsg_len-10, %ecx   # message-length
+        call    screen_write
 
         mov     -260(%ebp), %ecx
         jmp     .Lloop
@@ -279,8 +345,8 @@ print_mapped_pages:
 .Lpteloop:
         # read page table entry (PTE)
         mov     (%ebx,%ecx,4), %edx
-        # check present bit
-        test    $1, %edx
+        # check whether entry is zero
+        test    %edx, %edx
         jz      .Lskippte
         # read PDE index and shift it
         mov     -4(%ebp), %eax
@@ -514,3 +580,40 @@ hex2int:
         leave
         ret
 
+
+        .type   check_cpuid, @function
+check_cpuid:
+        enter   $0, $0
+        push    %ecx
+        push    %edx
+
+        mov     cpuid_avail, %al
+        test    %al, %al
+        jns     .Lskipcpuid
+
+        pushfl                  # push EFLAGS to stack
+        pop     %eax            # store EFLAGS in EAX
+        mov     %eax, %edx      # save in EDX for later testing
+        xor     $(1<<21), %eax  # toggle bit 21
+        push    %eax            # push to stack
+        popfl                   # save changed EAX to EFLAGS
+
+        pushfl                  # push EFLAGS to stack
+        pop     %eax            # store EFLAGS in EAX
+        cmp     %edx, %eax      # see if bit 21 has changed, if so
+        setne   %al             # set AL to 1 -> CPUID supported
+        mov     %al, cpuid_avail
+        je      .Lskipcpuid     # no change, then skip cpuid
+
+        mov     $0x01, %eax     # cpuid function 1
+        cpuid
+        mov     %ecx, cpuid_features
+        bt      $20, %ecx
+        setc    %al
+        mov     %al, cpuid_sse42_avail
+
+.Lskipcpuid:
+        pop     %edx
+        pop     %ecx
+        leave
+        ret

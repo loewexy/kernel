@@ -431,6 +431,8 @@ pm_enter:
         #----------------------------------------------------------
         mov     $privDS, %ax
         mov     %ax, %ds
+        mov     %ax, %es
+        mov     %ax, %fs
         mov     %ax, %gs
 
         #----------------------------------------------------------
@@ -448,12 +450,6 @@ pm_enter:
         shr     $2, %ecx
         cld
         rep     stosl
-
-        #----------------------------------------------------------
-        # setup access to CGA video memory using the ES segment
-        #----------------------------------------------------------
-        mov     $sel_es, %ax
-        mov     %ax, %es
 
         #----------------------------------------------------------
         # convert RTC segmented time to ticks value

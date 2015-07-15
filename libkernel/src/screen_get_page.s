@@ -10,6 +10,7 @@
 screen_get_page:
         enter   $0, $0
         push    %edx
+        pushl   %fs
 
         xor     %eax, %eax
         mov     $CRT_PORT, %dx          # CRTC i/o-port
@@ -30,14 +31,11 @@ screen_get_page:
         in      %dx, %al
         shr     $11, %eax               # divide offset by 0x1000/2
 
-        pushl   %fs
-
         mov     $sel_bs, %ax            # address rom-bios data
         mov     %ax, %fs                #   using FS register
         movzxb  %fs:(0x62), %eax        # get current page
 
         popl    %fs
-
         pop     %edx
         leave
         ret

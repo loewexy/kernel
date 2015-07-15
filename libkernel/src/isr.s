@@ -359,12 +359,11 @@ IRQ_CALL    47, 15 # 47 <- IRQ15
         #----------------------------------------------------------
         # setup segment registers
         #----------------------------------------------------------
-        mov     $sel_bs, %ax            # address rom-bios data
-        mov     %ax, %fs                #   using FS register
-        mov     $sel_es, %ax            # address video memory
-        mov     %ax, %es                #   with ES register
         mov     $privDS, %ax            # address data segment
         mov     %ax, %ds                #   with DS register
+        mov     %ax, %es                #   with ES register
+        mov     %ax, %gs                #   with ES register
+        mov     %ax, %fs                #   with FS register
 
         #----------------------------------------------------------
         # load interrupt ID and increment interrupt counter
@@ -377,7 +376,31 @@ IRQ_CALL    47, 15 # 47 <- IRQ15
         #----------------------------------------------------------
         mov     isr_table(,%ebx,4), %edx
         test    %edx, %edx
-        jz      .Lskiphandler
+        jnz     .Lcallhandler
+
+        #----------------------------------------------------------
+        # no interrupt handler has been registered
+        # check interrupt ID for IRQ
+        #----------------------------------------------------------
+        cmp     $0x20, %ebx             # check int id >= 0x20
+        jae     .Lirqeoi                # yes, then send EOI
+
+        #----------------------------------------------------------
+        # exception without registered handler
+        # print stack trace and then bail out
+        #----------------------------------------------------------
+        pushl   $(1<<12)+(1<<14)
+        pushl   $50                      # text column
+        pushl   $0x9e7070
+        pushl   $INT_NUM-2
+        pushl   $0
+        pushl   $intname
+        pushl   %ebp
+        call    print_stacktrace
+        add     $7*4, %esp
+        jmp     bail_out
+
+.Lcallhandler:
         #----------------------------------------------------------
         # put ebp onto stack in order to make ISR stack frame available
         # to interrupt handler. Finally, call the interrupt handler
@@ -397,6 +420,7 @@ IRQ_CALL    47, 15 # 47 <- IRQ15
         cmp     $0x20, %ebx             # check int id >= 0x20
         jb      .Lnoirq                 #   no, then skip IRQ
 
+.Lirqeoi:
         #----------------------------------------------------------
         # check whether the Interrupt ID was greater than or equal
         # to 40 (0x28, meaning IRQ8-15), then we need to send an
