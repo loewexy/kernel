@@ -17,18 +17,18 @@ int kprintf(const char*, ...);
 /*
  * Declaration of Page Directory and Page tables
  */
-uint32_t page_directory[1024] __attribute__((aligned(0x1000)));
+uint32_t page_directory[PDE_NUM]       __attribute__((aligned(PAGE_SIZE)));
 //Create Page Tables
-uint32_t kernel_page_table[1024] __attribute__((aligned(0x1000)));
-uint32_t programm_page_table[1024] __attribute__((aligned(0x1000)));
-uint32_t stack_page_table[1024] __attribute__((aligned(0x1000)));
+uint32_t kernel_page_table[PTE_NUM]    __attribute__((aligned(PAGE_SIZE)));
+uint32_t programm_page_table[PTE_NUM]  __attribute__((aligned(PAGE_SIZE)));
+uint32_t stack_page_table[PTE_NUM]     __attribute__((aligned(PAGE_SIZE)));
 
 //Can be set down, but not higher than die maximum number of pages
 uint32_t memoryPageCounter = PAGES_PHYSICAL_NUM;
 
 //Page replace parameters
-uint32_t replace_pde_offset = 0;
-uint32_t replace_pte_offset = 512;
+uint32_t replace_pde_offset = 1;
+uint32_t replace_pte_offset = 0;
 
 
 uint32_t dbg_ft_addr;
@@ -408,8 +408,8 @@ getAddressOfPageToReplace() {
         counter_pte++;
         if (counter_pte > PDE_MAX_INDEX) {
             if (counter_pde == PDE_MAX_INDEX) {
-                counter_pde = 0;
-                counter_pte = 256; //Do not remove Kernel Pages
+                counter_pde = 1;
+                counter_pte = 0; //Do not remove Kernel Pages
             } else {
                 counter_pte = 0;
                 counter_pde++;
@@ -502,7 +502,7 @@ init_paging() {
 
     //Set Directory to blank
     for (uint32_t i = 0; i < PDE_NUM; i++) {
-        *(page_directory + i) = *(page_directory + i) & 0x00000000;
+        *(page_directory + i) = 0x00000000;
     }
 
     //set physical memory bitfield to blank
@@ -520,24 +520,12 @@ init_paging() {
 
     //Copy Kernel to First Page Table
     //for the first MB
-    for (uint32_t i = 0; i < 256; i++) {
-#ifdef __DHBW_KERNEL__
-        if (i >= (LD_IMAGE_START >> 12) && i < (LD_DATA_START >> 12)) {
-            kernel_page_table[i] = (uint32_t) (i * 0x1000 + PAGE_IS_PRESENT);
-        } else if (i > (LD_DATA_START >> 12)) {
-            kernel_page_table[i] = (uint32_t) (i * 0x1000 + PAGE_IS_PRESENT + PAGE_IS_RW);
+    for (uint32_t addr = 0; addr < 0x100000; addr += PAGE_SIZE) {
+        if ((addr >= (uint32_t) &LD_IMAGE_START) && (addr < (uint32_t) &LD_DATA_START)) {
+            kernel_page_table[PTE(addr)] = (uint32_t) (addr | PAGE_IS_PRESENT);
         } else {
-            kernel_page_table[i] = (uint32_t) (i * 0x1000 + PAGE_IS_PRESENT + PAGE_IS_RW + PAGE_IS_USER);
+            kernel_page_table[PTE(addr)] = (uint32_t) (addr | PAGE_IS_PRESENT | PAGE_IS_RW);
         }
-#else
-        if (i >= (0x10000 >> PTE_SHIFT) && i < (0x20000 >> PTE_SHIFT)) {
-            kernel_page_table[i] = (uint32_t) (i * PAGE_SIZE + PAGE_IS_PRESENT);
-        } else if (i > (0x20000 >> 12)) {
-            kernel_page_table[i] = (uint32_t) (i * PAGE_SIZE + PAGE_IS_PRESENT + PAGE_IS_RW);
-        } else {
-            kernel_page_table[i] = (uint32_t) (i * PAGE_SIZE + PAGE_IS_PRESENT + PAGE_IS_RW + PAGE_IS_USER);
-        }
-#endif
     }
 
     //Map memory Adresses 1:1
