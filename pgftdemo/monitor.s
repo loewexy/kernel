@@ -39,16 +39,6 @@ pagemsg:.ascii  "________: ________ ____\r\n"
         .equ    pagemsg_len, (.-pagemsg)
 
         .align  4
-cpuid_features:
-        .long   0
-
-cpuid_avail:
-        .byte   -1
-
-cpuid_sse42_avail:
-        .byte   -1
-
-        .align  4
 mon_addr:
         .long 0
 
@@ -61,6 +51,7 @@ mon_addr:
 
         .type   run_monitor, @function
         .global run_monitor
+        .extern check_cpuid
         .extern kgets
         .extern freeAllPages
 run_monitor:
@@ -581,39 +572,3 @@ hex2int:
         ret
 
 
-        .type   check_cpuid, @function
-check_cpuid:
-        enter   $0, $0
-        push    %ecx
-        push    %edx
-
-        mov     cpuid_avail, %al
-        test    %al, %al
-        jns     .Lskipcpuid
-
-        pushfl                  # push EFLAGS to stack
-        pop     %eax            # store EFLAGS in EAX
-        mov     %eax, %edx      # save in EDX for later testing
-        xor     $(1<<21), %eax  # toggle bit 21
-        push    %eax            # push to stack
-        popfl                   # save changed EAX to EFLAGS
-
-        pushfl                  # push EFLAGS to stack
-        pop     %eax            # store EFLAGS in EAX
-        cmp     %edx, %eax      # see if bit 21 has changed, if so
-        setne   %al             # set AL to 1 -> CPUID supported
-        mov     %al, cpuid_avail
-        je      .Lskipcpuid     # no change, then skip cpuid
-
-        mov     $0x01, %eax     # cpuid function 1
-        cpuid
-        mov     %ecx, cpuid_features
-        bt      $20, %ecx
-        setc    %al
-        mov     %al, cpuid_sse42_avail
-
-.Lskipcpuid:
-        pop     %edx
-        pop     %ecx
-        leave
-        ret
