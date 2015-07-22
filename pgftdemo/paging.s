@@ -1,9 +1,35 @@
 
+
+#==================================================================
+# C O N S T A N T S
+#==================================================================
+        .equ            PG_SIZE,    0x1000
+        .equ            PG_PRESENT,      1
+        .equ            PG_RW,           2
+        .equ            PG_USR,          4
+
+
+#==================================================================
+# S E C T I O N   B S S
+#==================================================================
+        .section        .bss
+
+        .align PG_SIZE
+        .comm  page_dir, PG_SIZE
+        .comm  page_table_kernel, PG_SIZE
+
+
 #==================================================================
 # S E C T I O N   T E X T
 #==================================================================
         .section        .text
         .code32
+
+        #-------------------------------------------------------------------
+        # reference to constants defined in ldscript
+        #-------------------------------------------------------------------
+        .extern         LD_DATA_START
+        .extern         LD_IMAGE_START
 
 
 #-------------------------------------------------------------------
@@ -20,10 +46,62 @@
 #-------------------------------------------------------------------
         .type           enable_paging, @function
         .globl          enable_paging
-        .extern         LD_DATA_START   # constant defined in ldscript
+
+        #----------------------------------------------------------
+        # bit 31: enable paging
+        # bit 30: disable caching
+        # bit 16: enable write protection
+        #----------------------------------------------------------
+        .equ    CR0_PG_FLAGS, (1<<31)+(1<<30)+(1<<16)
+
 enable_paging:
         enter   $0, $0
         push    %eax
+        push    %ebx
+        push    %ecx
+        push    %edx
+
+        #----------------------------------------------------------
+        # initialise page directory entries to zero
+        #----------------------------------------------------------
+        mov     $page_dir, %eax
+        xor     %ecx, %ecx
+.Lpgdirloop:
+        movl    $0, (%eax,%ecx,4)
+        inc     %ecx
+        cmp     $PG_SIZE/4, %ecx
+        jb      .Lpgdirloop
+
+        #----------------------------------------------------------
+        # initialise kernel page table entries to provide a 1:1
+        # mapping between linear and physical addresses
+        # Note: the text segment, located between LD_IMAGE_START
+        # and LD_DATA_START, is write-protected
+        #----------------------------------------------------------
+        mov     $page_table_kernel, %ebx
+        xor     %ecx, %ecx
+        xor     %edx, %edx
+.Lpgtableloop:
+        mov     $PG_PRESENT+PG_RW, %dl
+        cmp     $LD_IMAGE_START, %edx
+        jb      .Lpgrw
+        cmp     $LD_DATA_START, %edx
+        jae     .Lpgrw
+        mov     $PG_PRESENT, %dl
+.Lpgrw:
+        movl    %edx, (%ebx,%ecx,4)
+        inc     %ecx
+        add     $PG_SIZE, %edx
+        cmp     $PG_SIZE/4, %ecx
+        jb      .Lpgtableloop
+
+        #----------------------------------------------------------
+        # convert logical kernel page table addess in EBX to a
+        # linear address and write this address into PDE #0
+        #----------------------------------------------------------
+        add     $LD_DATA_START, %ebx    # add .data start address
+        or      $PG_PRESENT+PG_RW, %ebx
+        mov     %ebx, (%eax)
 
         #----------------------------------------------------------
         # setup page-directory address in control register CR3
@@ -32,15 +110,16 @@ enable_paging:
         mov     %eax, %cr3              # goes into CR3 register
 
         #----------------------------------------------------------
-        # turn on paging (by setting bit #31 in register CR0)
+        # turn on paging
         #----------------------------------------------------------
         mov     %cr0, %eax              # current machine status
-        bts     $31, %eax               # turn on PG-bit's image
-        bts     $30, %eax               # disable caching
-        bts     $16, %eax               # enable write protection
-        mov     %eax, %cr0              # enable page-mappings
+        or      $CR0_PG_FLAGS, %eax     # set paging flags
+        mov     %eax, %cr0
         jmp     .+2                     # flush prefetch queue
 
+        pop     %edx
+        pop     %ecx
+        pop     %ebx
         pop     %eax
         leave
         ret
@@ -79,6 +158,30 @@ disable_paging:
         mov     %eax, %cr3              # and write it to CR3
 
         pop     %eax
+        leave
+        ret
+
+
+#-------------------------------------------------------------------
+# FUNCTION:   get_page_dir_addr
+#
+# PURPOSE:    Return the page directory address by reading it from CR3
+#
+# C Call:     uint32_t get_page_dir_addr(void)
+#
+# PARAMETERS: none
+#
+# RETURN:     logical page directory address
+#
+#-------------------------------------------------------------------
+        .type   get_page_dir_addr, @function
+        .globl  get_page_dir_addr
+get_page_dir_addr:
+        enter   $0, $0
+        # get page directory address
+        mov     %cr3, %eax
+        # convert to logical page directory address
+        sub     $LD_DATA_START, %eax
         leave
         ret
 
@@ -145,7 +248,7 @@ is_page_present:
 
         # get page directory address
         mov     %cr3, %esi
-        # segmented page directory address
+        # convert to logical page directory address
         sub     $LD_DATA_START, %esi
 
         # load linear address from stack

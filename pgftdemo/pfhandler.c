@@ -17,9 +17,7 @@ int kprintf(const char*, ...);
 /*
  * Declaration of Page Directory and Page tables
  */
-uint32_t page_directory[PDE_NUM]       __attribute__((aligned(PAGE_SIZE)));
 //Create Page Tables
-uint32_t kernel_page_table[PTE_NUM]    __attribute__((aligned(PAGE_SIZE)));
 uint32_t programm_page_table[PTE_NUM]  __attribute__((aligned(PAGE_SIZE)));
 uint32_t stack_page_table[PTE_NUM]     __attribute__((aligned(PAGE_SIZE)));
 
@@ -58,12 +56,15 @@ uint32_t getVirtAddrOfFrameOnDisk(uint32_t, uint32_t);
 uint32_t getIndexInStorageBitfield(uint32_t, uint32_t);
 void copyPage(uint32_t, uint32_t);
 void clearPage(uint32_t);
-void invalidate_addr(uint32_t);
 void freeAllPages();
 
-pg_struct_t *
-pfhandler(uint32_t ft_addr) {
+extern void invalidate_addr(uint32_t);
+extern uint32_t *get_page_dir_addr(void);
 
+
+pg_struct_t *
+pfhandler(uint32_t ft_addr)
+{
     int pde = PDE(ft_addr);
     int pte = PTE(ft_addr);
 
@@ -77,14 +78,11 @@ pfhandler(uint32_t ft_addr) {
     pg_struct.sec_addr = INVALID_ADDR;
 
     //If page table exists in page directory
+    uint32_t *page_directory = get_page_dir_addr();
     if ((page_directory[pde] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
 
         uint32_t *page_table;
-#ifdef __DHBW_KERNEL__
         page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
-#else
-        page_table = (uint32_t *) (page_directory[pde] & PAGE_ADDR_MASK);
-#endif
 
         //If page is not present in page table
         if ((*(page_table + pte) & PAGE_IS_PRESENT) != PAGE_IS_PRESENT) {
@@ -112,9 +110,7 @@ pfhandler(uint32_t ft_addr) {
                 copyPage(strVirtAddr, ft_addr & PAGE_ADDR_MASK);
                 //Remove Dirty Bit, because this page wasn't changed
                 *(page_table + pte) &= (~PAGE_IS_DIRTY);
-#ifdef __DHBW_KERNEL__
                 invalidate_addr(ft_addr & PAGE_ADDR_MASK);
-#endif
             }
             //Set flags on memory address
 
@@ -212,6 +208,7 @@ freeAllPages() {
     uint32_t pte;
     uint32_t virtAddr = 0;
     uint32_t *page_table;
+    uint32_t *page_directory = get_page_dir_addr();
 
     //For all present bits, do free page in Memory
     for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
@@ -224,16 +221,10 @@ freeAllPages() {
 
             if (virtAddr != 0x0) {
                 clearPage(virtAddr);
-#ifdef __DHBW_KERNEL__
                 page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
-#else
-                page_table = (uint32_t *) (page_directory[pde] & PAGE_ADDR_MASK);
-#endif
                 //Remove all flags
                 page_table[pte] &= PAGE_ADDR_MASK;
-#ifdef __DHBW_KERNEL__
                 invalidate_addr(virtAddr);
-#endif
                 removePresentBit(pde, pte);
             }
 
@@ -262,29 +253,18 @@ uint32_t dbg_copy_dst_addr;
 
 void copyPage(uint32_t src_address, uint32_t dst_address) {
     //unsusedPar = src_address + dst_address;
-#ifdef __DHBW_KERNEL__
     uint32_t *src = (uint32_t *) ((src_address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
     uint32_t *dst = (uint32_t *) ((dst_address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
         *(dst++) = *(src++);
     }
-
-#else
-    src_address &= 1;
-    dst_address &= 1;
-#endif
-
 } // end of copyPage
 
 void clearPage(uint32_t address) {
-#ifdef __DHBW_KERNEL__
     uint32_t *addr = (uint32_t *) ((address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
         *(addr++) = 0x00000000;
     }
-#else
-    address &= 1;
-#endif
 } // end of clearPage
 
 
@@ -316,21 +296,19 @@ uint32_t getIndexInStorageBitfield(uint32_t pde, uint32_t pte) {
 uint32_t dbg_swap_addr;
 uint32_t dbg_swap_result;
 
-uint32_t swap(uint32_t virtAddr) {
+uint32_t swap(uint32_t virtAddr)
+{
     // Compute Parameters
     int pde = PDE(virtAddr);
     int pte = PTE(virtAddr);
+    uint32_t *page_directory = get_page_dir_addr();
 
     //printf("Swap:\nPDE: %x PTE: %x\n",pde,pte);
     uint32_t storageAddr;
     dbg_swap_addr = virtAddr;
 
-#ifdef __DHBW_KERNEL__
     invalidate_addr(virtAddr);
     uint32_t * page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
-#else
-    uint32_t * page_table = (uint32_t *) (page_directory[pde] & PAGE_ADDR_MASK);
-#endif
 
     uint32_t memoryAddr = page_table[pte] & PAGE_ADDR_MASK;
     int flags = page_table[pte] & PAGE_OFFSET_MASK;
@@ -393,6 +371,7 @@ getAddressOfPageToReplace() {
     uint32_t flags;
     uint32_t tmp_class;
     uint32_t virtAddr;
+    uint32_t *page_directory = get_page_dir_addr();
 
     //Save pde and pte of last replace
     start_pde = replace_pde_offset;
@@ -422,12 +401,8 @@ getAddressOfPageToReplace() {
             virtAddr = 0;
             virtAddr |= counter_pde << PDE_SHIFT;
             virtAddr |= counter_pte << PTE_SHIFT;
-#ifdef __DHBW_KERNEL__
             invalidate_addr(virtAddr);
             temp_page_table = (uint32_t *) ((page_directory[counter_pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
-#else
-            temp_page_table = (uint32_t *) (page_directory[counter_pde] & PAGE_ADDR_MASK);
-#endif
             flags = *(temp_page_table + counter_pte) & PAGE_OFFSET_MASK;
             tmp_class = getClassOfPage(flags);
             //Remove access bit
@@ -475,35 +450,14 @@ uint32_t getClassOfPage(uint32_t flags) {
 //==============================================================================
 
 
-
-
-#ifndef __DHBW_KERNEL__
-//for local use
-
-int kprintf(const char * format, ...) {
-    int rtn = 0;
-    va_list args;
-    va_start(args, format);
-    rtn = vprintf(format, args);
-    va_end(args);
-    return rtn;
-
-} // end of kprintf
-#endif
-
 //==============================================================================
 //Initialize paging//
 //==============================================================================
 
-uint32_t*
-init_paging() {
-
-    // Initialize Page Directory
-
-    //Set Directory to blank
-    for (uint32_t i = 0; i < PDE_NUM; i++) {
-        *(page_directory + i) = 0x00000000;
-    }
+void
+init_user_pages()
+{
+    uint32_t *page_directory = get_page_dir_addr();
 
     //set physical memory bitfield to blank
     for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
@@ -518,46 +472,11 @@ init_paging() {
         storageBitfield[i].memAddr = 0;
     }
 
-    //Copy Kernel to First Page Table
-    //for the first MB
-    for (uint32_t addr = 0; addr < 0x100000; addr += PAGE_SIZE) {
-        if ((addr >= (uint32_t) &LD_IMAGE_START) && (addr < (uint32_t) &LD_DATA_START)) {
-            kernel_page_table[PTE(addr)] = (uint32_t) (addr | PAGE_IS_PRESENT);
-        } else {
-            kernel_page_table[PTE(addr)] = (uint32_t) (addr | PAGE_IS_PRESENT | PAGE_IS_RW);
-        }
-    }
-
-    //Map memory Adresses 1:1
-    if (PDE(PAGES_PHYSICAL_START) == 0) { //Kernel Page Table
-        for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
-            uint32_t flags = PAGE_IS_PRESENT + PAGE_IS_RW + PAGE_IS_USER;
-            uint32_t address = PAGES_PHYSICAL_START + (i * PAGE_SIZE);
-            uint32_t index = PTE(PAGES_PHYSICAL_START) + i;
-            kernel_page_table[index] = (uint32_t) (address + flags);
-        }
-    }
-
-    //Map swap Adresses 1:1
-    if (PDE(PAGES_SWAPPED_START) == 0) { //Kernel Page Table
-        for (uint32_t i = 0; i < PAGES_SWAPPED_NUM; i++) {
-            uint32_t flags = PAGE_IS_PRESENT + PAGE_IS_RW + PAGE_IS_USER;
-            uint32_t address = PAGES_SWAPPED_START + (i * PAGE_SIZE);
-            uint32_t index = PTE(PAGES_SWAPPED_START) + i;
-            kernel_page_table[index] = (uint32_t) (address + flags);
-        }
-    }
-
-    *(page_directory + PDE_KERNEL_PT) = (uint32_t) kernel_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
     *(page_directory + PDE_PROGRAMM_PT) = (uint32_t) programm_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    *(page_directory + PDE_STACK_PT) = (uint32_t) stack_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-
-#ifdef __DHBW_KERNEL__
-    *(page_directory + PDE_KERNEL_PT) += (uint32_t) & LD_DATA_START;
     *(page_directory + PDE_PROGRAMM_PT) += (uint32_t) & LD_DATA_START;
+    *(page_directory + PDE_STACK_PT) = (uint32_t) stack_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
     *(page_directory + PDE_STACK_PT) += (uint32_t) & LD_DATA_START;
-#endif
-    return page_directory;
+
 } //END OF INIT PAGING
 
 

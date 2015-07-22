@@ -61,7 +61,7 @@ typedef struct pg_struct {
 } pg_struct_t;
 
 
-extern uint32_t *init_paging();
+extern void init_user_pages(void);
 extern void freeAllPages(void);
 extern pg_struct_t *pfhandler(uint32_t ft_addr);
 

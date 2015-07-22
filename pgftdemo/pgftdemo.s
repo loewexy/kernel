@@ -112,7 +112,7 @@ oldesp: .long   0x00000000
 #------------------------------------------------------------------
         .type   main, @function
         .global main
-        .extern init_paging
+        .extern init_user_pages
         .extern enable_paging
         .extern int_to_hex
         .extern screen_write
@@ -129,7 +129,6 @@ main:
         #   CS - Code Segment
         #   DS - Data Segment
         #   SS - Stack Segment
-        #   ES - CGA Video Memory
         #----------------------------------------------------------
 
         #----------------------------------------------------------
@@ -152,16 +151,15 @@ main:
         call    screen_sel_page
 
         #----------------------------------------------------------
-        # initialise page directory and page tables
-        # page directory address will be returned in EAX
-        #----------------------------------------------------------
-        call    init_paging
-
-        #----------------------------------------------------------
         # enable paging
-        # page directory address expected in EAX
+        # initialise page directory and kernel page table
         #----------------------------------------------------------
         call    enable_paging
+
+        #----------------------------------------------------------
+        # initialise user/program page tables
+        #----------------------------------------------------------
+        call    init_user_pages
 
         #----------------------------------------------------------
         # print the page directory address
