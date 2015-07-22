@@ -15,7 +15,8 @@ PROG        = pgftdemo
 
 TARGETS     = $(PROG).flp $(PROG).sym
 OBJS        = $(PROG).o pfhandler.o paging.o isrpfe.o irqpit.o
-OBJS       += kgetc.o kgets.o kprintf.o
+OBJS       += kgetc.o kgets.o
+OBJS       += asm_printf.o
 OBJS       += monitor.o chkcpuid.o
 
 .PHONY: all

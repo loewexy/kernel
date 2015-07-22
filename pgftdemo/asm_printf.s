@@ -1,10 +1,10 @@
 //----------------------------------------------------------------
-//      kprintf.s
+//      asm_printf.s
 //
 //      Here we have written our own (simplified) implementation
 //      for the customary 'printf()' library-function:
 //
-//               int kprintf( char *fmt, ... );
+//               int asm_printf( char *fmt, ... );
 //
 //      Based on: Prof. Allan Cruse, University of San Francisco
 //----------------------------------------------------------------
@@ -20,9 +20,9 @@
         .extern write
 .endif
 
-        .global kprintf
-        .type   kprintf, @function
-kprintf:
+        .global asm_printf
+        .type   asm_printf, @function
+asm_printf:
         pushl   %ebp                    # preserve frame-pointer
         movl    %esp, %ebp              # setup local stack-frame
         subl    $0x200, %esp            # create space for radix, buffer etc

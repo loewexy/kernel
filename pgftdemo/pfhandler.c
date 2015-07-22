@@ -3,7 +3,7 @@
 
 #ifdef __DHBW_KERNEL__
 #include<stdarg.h>
-#include "kprintf.h"
+#include "asm_printf.h"
 // Linear address of data segment, defined in ldscript
 // use only in Kernel context with x86 segmentation
 // being enabled
@@ -12,7 +12,7 @@ extern uint32_t LD_IMAGE_START;
 #else
 #include<stdarg.h>
 #include <stdio.h>
-int kprintf(const char*, ...);
+int asm_printf(const char*, ...);
 #endif
 /*
  * Declaration of Page Directory and Page tables
