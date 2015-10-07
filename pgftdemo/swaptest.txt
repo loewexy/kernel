@@ -1,0 +1,27 @@
+##
+# free pages, nothing should happen
+C
+M
+
+# write pattern to physical frames used later
+W 200000 cafe1
+W 201000 cafe2
+W 202000 cafe3
+W 203000 cafe4
+
+# the above patterns should not be visible in any
+# of the mapped pages
+R 0804b000
+R 0804a000
+R 08049000
+R 08048000
+M
+
+R 0804b000
+R 0804c000
+
+# free pages
+C
+M
+
+Q
