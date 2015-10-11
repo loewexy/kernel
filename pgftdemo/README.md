@@ -1,3 +1,25 @@
+# Introduction
+
+This program demonstrates the x86 paging mechanism by providing a mapping of virtual memory areas to
+corresponding physical addresses:
+* The kernel code address area itself is mapped 1:1 to physical addresses
+* The Linux user space virtual address area beginning at 0x8048000 and the stack area are mapped to physical
+  memory starting at address 0x200000
+
+# Boot Loader Signature
+
+The program's signature is stored in a dedicated ELF section and verified by the boot loader
+prior to executing the image. The module start.s defines the signature layout as follows
+(gas syntax):
+
+```assembly
+.section        .signature, "a", @progbits
+.ascii  "DHBW"                  # application 'signature'
+.long   0
+.long   _start                  # store start address
+.long   etext
+.long   edata
+```
 
 # Memory Layout
 
