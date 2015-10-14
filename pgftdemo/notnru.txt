@@ -1,0 +1,16 @@
+##
+# test input to show that page replacement algorithm is not NRU
+# access some addresses in decreasing order
+R 08058000
+R 08057000
+R 08056000
+R 08055000
+M
+
+R 08048000
+M
+R 08060000
+M
+R 08070000
+M
+Q
