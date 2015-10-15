@@ -1,19 +1,10 @@
-#include "pfhandler.h"
-
-
-#ifdef __DHBW_KERNEL__
-#include<stdarg.h>
-#include "asm_printf.h"
-// Linear address of data segment, defined in ldscript
-// use only in Kernel context with x86 segmentation
-// being enabled
-extern uint32_t LD_DATA_START;
-extern uint32_t LD_IMAGE_START;
-#else
-#include<stdarg.h>
+#include <stdarg.h>
 #include <stdio.h>
-int asm_printf(const char*, ...);
-#endif
+#include "pgftdemo.h"
+
+
+extern int asm_printf(char *fmt, ...);
+
 /*
  * Declaration of Page Directory and Page tables
  */

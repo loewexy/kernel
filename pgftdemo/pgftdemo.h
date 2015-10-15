@@ -1,8 +1,17 @@
 
-#ifndef PFHANDLER_H
-#define PFHANDLER_H        1
+#ifndef _PGFTDEMO_H
+#define _PGFTDEMO_H        1
 
 #include "types.h"
+
+#ifdef __DHBW_KERNEL__
+// Linear address of data segment, defined in ldscript
+// use only in Kernel context with x86 segmentation
+// being enabled
+extern uint32_t LD_DATA_START;
+extern uint32_t LD_IMAGE_START;
+
+#endif
 
 #define PAGE_SIZE                 0x1000
 
@@ -65,5 +74,5 @@ extern void init_user_pages(void);
 extern void freeAllPages(void);
 extern pg_struct_t *pfhandler(uint32_t ft_addr);
 
-#endif  /* pfhandler.h */
+#endif  /* _PGFTDEMO_H */
 

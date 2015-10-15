@@ -4,7 +4,7 @@
 #
 #=============================================================================
 
-SUBDIRS     = boot libkernel
+SUBDIRS     = boot libkernel libminic
 SUBDIRS    += welcome timeoday tickdemo
 SUBDIRS    += pmhello pgftdemo
 

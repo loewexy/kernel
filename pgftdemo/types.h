@@ -1,15 +1,15 @@
 
-#ifndef TYPES_H
-#define TYPES_H        1
+#ifndef _TYPES_H
+#define _TYPES_H        1
 
 /*
  * Defines a subset of integer types according to
  * ISO C99: 7.18 Integer types <stdint.h>
  */
 
+#ifndef NULL
 #define NULL                    0
-
-#define PACKED __attribute__((packed))
+#endif
 
 /* Exact integral types.  */
 
@@ -42,5 +42,5 @@ __extension__
 typedef unsigned long long int  uint64_t;
 #endif
 
-#endif  /* types.h */
+#endif  /* _TYPES_H */
 
