@@ -5,11 +5,32 @@
 #include "types.h"
 
 #ifdef __DHBW_KERNEL__
-// Linear address of data segment, defined in ldscript
-// use only in Kernel context with x86 segmentation
-// being enabled
+/*
+ * Linear address offset of the data segment, which is defined in
+ * the linker scriot (ldscript)
+ *
+ * Note:
+ * use only in Kernel context with x86 segmentation being enabled
+ */
 extern uint32_t LD_DATA_START;
 extern uint32_t LD_IMAGE_START;
+
+/*
+ * convert a logical address into a linear address using the
+ * data segment offset defined in the linker script
+ */
+#define LINADDR(addr)         ((uint32_t)(addr) + (uint32_t)&LD_DATA_START)
+
+/*
+ * convert a linear address into a logical address using the
+ * data segment offset defined in the linker script
+ */
+#define LOGADDR(addr)         (uint32_t *)((addr) - (uint32_t)&LD_DATA_START)
+
+#else
+
+#define LINADDR(addr)         (uint32_t)(addr)
+#define LOGADDR(addr)         (uint32_t *)(addr)
 
 #endif
 

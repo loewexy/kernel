@@ -73,7 +73,7 @@ pfhandler(uint32_t ft_addr)
     if ((page_directory[pde] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
 
         uint32_t *page_table;
-        page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+        page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
 
         //If page is not present in page table
         if ((*(page_table + pte) & PAGE_IS_PRESENT) != PAGE_IS_PRESENT) {
@@ -212,7 +212,7 @@ freeAllPages() {
 
             if (virtAddr != 0x0) {
                 clearPage(virtAddr);
-                page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+                page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
                 //Remove all flags
                 page_table[pte] &= PAGE_ADDR_MASK;
                 invalidate_addr(virtAddr);
@@ -244,15 +244,15 @@ uint32_t dbg_copy_dst_addr;
 
 void copyPage(uint32_t src_address, uint32_t dst_address) {
     //unsusedPar = src_address + dst_address;
-    uint32_t *src = (uint32_t *) ((src_address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
-    uint32_t *dst = (uint32_t *) ((dst_address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+    uint32_t *src = LOGADDR(src_address & PAGE_ADDR_MASK);
+    uint32_t *dst = LOGADDR(dst_address & PAGE_ADDR_MASK);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
         *(dst++) = *(src++);
     }
 } // end of copyPage
 
 void clearPage(uint32_t address) {
-    uint32_t *addr = (uint32_t *) ((address & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+    uint32_t *addr = LOGADDR(address & PAGE_ADDR_MASK);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
         *(addr++) = 0x00000000;
     }
@@ -299,7 +299,7 @@ uint32_t swap(uint32_t virtAddr)
     dbg_swap_addr = virtAddr;
 
     invalidate_addr(virtAddr);
-    uint32_t * page_table = (uint32_t *) ((page_directory[pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+    uint32_t * page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
 
     uint32_t memoryAddr = page_table[pte] & PAGE_ADDR_MASK;
     int flags = page_table[pte] & PAGE_OFFSET_MASK;
@@ -393,7 +393,7 @@ getAddressOfPageToReplace() {
             virtAddr |= counter_pde << PDE_SHIFT;
             virtAddr |= counter_pte << PTE_SHIFT;
             invalidate_addr(virtAddr);
-            temp_page_table = (uint32_t *) ((page_directory[counter_pde] & PAGE_ADDR_MASK) - (uint32_t) & LD_DATA_START);
+            temp_page_table = LOGADDR(page_directory[counter_pde] & PAGE_ADDR_MASK);
             flags = *(temp_page_table + counter_pte) & PAGE_OFFSET_MASK;
             tmp_class = getClassOfPage(flags);
             //Remove access bit
@@ -449,8 +449,7 @@ void
 init_user_pages()
 {
     uint32_t *page_directory = get_page_dir_addr();
-    asm_printf("Page Directory is at linear address 0x%08x\r\n",
-            (uint32_t)page_directory + (uint32_t)&LD_DATA_START);
+    asm_printf("Page Directory is at linear address 0x%08x\r\n", LINADDR(page_directory));
 
     //set physical memory bitfield to blank
     for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
@@ -465,12 +464,7 @@ init_user_pages()
         storageBitfield[i].memAddr = 0;
     }
 
-    *(page_directory + PDE_PROGRAMM_PT) = (uint32_t) programm_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    *(page_directory + PDE_PROGRAMM_PT) += (uint32_t) & LD_DATA_START;
-    *(page_directory + PDE_STACK_PT) = (uint32_t) stack_page_table | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    *(page_directory + PDE_STACK_PT) += (uint32_t) & LD_DATA_START;
-
+    *(page_directory + PDE_PROGRAMM_PT) = LINADDR(programm_page_table) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+    *(page_directory + PDE_STACK_PT) = LINADDR(stack_page_table) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
 } //END OF INIT PAGING
-
-
 
