@@ -99,15 +99,13 @@ isrPFE:
         jnz     .Lprotviol
 
         mov     %cr2, %eax              # faulting address
+        pushl   %eax                    # push to stack for later use
         invlpg  %gs:(%eax)              # invalidate TLB
         lea     pgftaddr, %edi
         mov     $8, %ecx
         call    int_to_hex
 
-        mov     %cr2, %eax              # faulting address
-        invlpg  (%eax)                  # invalidate TLB
-        pushl   %eax
-        call    pfhandler
+        call    pfhandler               # uses stack parameter pushed above
         add     $4, %esp
 
         mov     %eax, %ebx
