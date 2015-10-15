@@ -449,6 +449,8 @@ void
 init_user_pages()
 {
     uint32_t *page_directory = get_page_dir_addr();
+    asm_printf("Page Directory is at linear address 0x%08x\r\n",
+            (uint32_t)page_directory + (uint32_t)&LD_DATA_START);
 
     //set physical memory bitfield to blank
     for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
