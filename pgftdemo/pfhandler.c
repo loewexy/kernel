@@ -146,6 +146,7 @@ getPageFrame() {
     uint32_t memoryAddress;
     memoryAddress = getFreeMemoryAddress();
     if (memoryAddress != INVALID_ADDR) {
+		clearPage(memoryAddress);
         return memoryAddress;
     }
     //There is no page left
@@ -153,6 +154,7 @@ getPageFrame() {
     uint32_t virtAddr = getAddressOfPageToReplace();
     pg_struct.vic_addr = virtAddr;
     memoryAddress = swap(virtAddr);
+    clearPage(memoryAddress);
     return memoryAddress;
 } // end of getPageFrame
 
@@ -333,9 +335,6 @@ uint32_t swap(uint32_t virtAddr)
             storageAddr = getVirtAddrOfFrameOnDisk(pde, pte);
             pg_struct.sec_addr = storageAddr;
             copyPage(virtAddr, storageAddr);
-            clearPage(virtAddr);
-
-
         }
         //set swapped bit
         page_table[pte] |= PAGE_IS_SWAPPED;
