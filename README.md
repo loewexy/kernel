@@ -1,12 +1,7 @@
 # kernel
 Very simplistic x86 kernel running from virtual floppy disk in QEMU
 
-
-
-==========================================================================
-boot/bootload - PC Bootloader for DHBW Kernel
-==========================================================================
-
+# boot/bootload - PC Bootloader for DHBW Kernel
 Here is a 'boot-loader' that you can use for launching our
 programming demos and exercises.
 
@@ -26,7 +21,6 @@ with CS:IP = 0x1000:addr, where the 16-bit start # address
 
 This code begins executing with CS:IP = 0x07C0:0000
 
-
 LIMITATIONS:
 This bootloader assumes a virtual floppy disk, e.g. as provided
 by QEMU. In order to support real floppy drive hardware, drive
@@ -34,3 +28,19 @@ motor control needs to be added.
 
 Based on cs630ipl.s and memsize.s written by Prof. Allan Cruse,
 University of San Francisco, Course CS 630, Fall 2008
+
+# pgftdemo
+This program demonstrates the x86 paging mechanism by providing
+a mapping of virtual memory areas to corresponding physical addresses:
+* The kernel code address area itself is mapped 1:1 to physical addresses
+* The Linux user space virtual address area beginning at 0x8048000
+  and the stack area are mapped to physical memory starting at
+  address 0x200000
+
+
+# pmhello
+This program shows the transition from x86 real-mode to protected-mode
+and prints a simple welcome message to the screen. Finally, the program
+triggers a General Protection Fault (int#14) exception by raising an
+unhandled interrupt. The exception handler prints the contents of all
+registers, including the address of the faulting instruction.
