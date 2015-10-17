@@ -105,8 +105,6 @@ oldesp: .long   0x00000000
         .global main
         .extern init_user_pages
         .extern enable_paging
-        .extern int_to_hex
-        .extern screen_write
         .extern screen_sel_page
         .extern run_monitor
 main:

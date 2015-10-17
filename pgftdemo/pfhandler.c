@@ -47,9 +47,6 @@ void copyPage(uint32_t, uint32_t);
 void clearPage(uint32_t);
 void freeAllPages();
 
-extern void invalidate_addr(uint32_t);
-extern uint32_t *get_page_dir_addr(void);
-
 
 pg_struct_t *
 pfhandler(uint32_t ft_addr)
@@ -237,11 +234,8 @@ freeAllPages() {
 //END OF MEMORY FUNCTIONS//
 //==============================================================================
 
-uint32_t dbg_copy_src_addr;
-uint32_t dbg_copy_dst_addr;
 
 void copyPage(uint32_t src_address, uint32_t dst_address) {
-    //unsusedPar = src_address + dst_address;
     uint32_t *src = LOGADDR(src_address & PAGE_ADDR_MASK);
     uint32_t *dst = LOGADDR(dst_address & PAGE_ADDR_MASK);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {

@@ -78,7 +78,6 @@ extern uint32_t LD_IMAGE_START;
 #define PDE_STACK_PT          PDE(STACK_START_ADDR)
 
 
-
 typedef struct pg_struct {
     uint32_t ft_addr;     // faulting linear memory address
     uint32_t pde;         // Page Directory Entry
@@ -91,9 +90,14 @@ typedef struct pg_struct {
 } pg_struct_t;
 
 
+/* pfhandler.c */
 extern void init_user_pages(void);
 extern void freeAllPages(void);
 extern pg_struct_t *pfhandler(uint32_t ft_addr);
+
+/* paging.s */
+extern void invalidate_addr(uint32_t);
+extern uint32_t *get_page_dir_addr(void);
 
 #endif  /* _PGFTDEMO_H */
 
