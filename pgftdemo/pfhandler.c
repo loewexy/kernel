@@ -7,8 +7,8 @@ extern int asm_printf(char *fmt, ...);
  * Declaration of Page Directory and Page tables
  */
 //Create Page Tables
-uint32_t programm_page_table[PTE_NUM]  __attribute__((aligned(PAGE_SIZE)));
-uint32_t stack_page_table[PTE_NUM]     __attribute__((aligned(PAGE_SIZE)));
+uint32_t page_table_program[PTE_NUM]   __attribute__((aligned(PAGE_SIZE)));
+uint32_t page_table_stack[PTE_NUM]     __attribute__((aligned(PAGE_SIZE)));
 
 //Can be set down, but not higher than die maximum number of pages
 uint32_t memoryPageCounter = PAGES_PHYSICAL_NUM;
@@ -456,7 +456,7 @@ init_user_pages()
         storageBitfield[i].memAddr = 0;
     }
 
-    *(page_directory + PDE_PROGRAMM_PT) = LINADDR(programm_page_table) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    *(page_directory + PDE_STACK_PT) = LINADDR(stack_page_table) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+    *(page_directory + PDE_PROGRAMM_PT) = LINADDR(page_table_program) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+    *(page_directory + PDE_STACK_PT) = LINADDR(page_table_stack) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
 } //END OF INIT PAGING
 
