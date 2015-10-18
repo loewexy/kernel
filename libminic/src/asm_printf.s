@@ -45,12 +45,7 @@ hexlc:  .ascii "0123456789abcdef +-"
 #==================================================================
         .section        .text
 
-.ifdef __DHBW_KERNEL__
         .extern screen_write
-.else
-        .extern write
-.endif
-
         .global asm_printf
         .type   asm_printf, @function
 asm_printf:
@@ -58,11 +53,9 @@ asm_printf:
         movl    %esp, %ebp              # setup local stack-frame
         subl    $0x200, %esp            # create space for radix, buffer etc
         pushal                          # preserve cpu registers
-.ifdef __DHBW_KERNEL__
         push    %es
         mov     %ds, %ax
         mov     %ax, %es
-.endif
 
         lea     -0x200(%ebp), %edi      # buffer address into EDI
         movl    8(%ebp), %esi           # fmt parameter into ESI
@@ -84,16 +77,8 @@ asm_printf:
         lea     -0x200(%ebp), %esi      # buffer address into ESI
         subl    %esi, %edi              # compute output length
         movl    %edi, -12(%ebp)         # and save it on stack
-.ifdef __DHBW_KERNEL__
         mov     %edi, %ecx
         call    screen_write
-.else
-        push    %edi
-        push    %esi
-        pushl   $1
-        call    write
-        add     $12, %esp
-.endif
         jmp     .Lreturn                # then exit this function
 
 .Lescape:
@@ -226,9 +211,7 @@ asm_printf:
         movl    $-1, -12(%ebp)          # store error indicator
 
 .Lreturn:
-.ifdef __DHBW_KERNEL__
         pop     %es
-.endif
         popal                           # restore saved registers
         movl    -12(%ebp), %eax         # copy return-value to EAX
         movl    %ebp, %esp              # discard temporary storage
