@@ -56,7 +56,7 @@ endef
 	@echo AS $<
 	@$(AS) $(ASOPT) -almgns=$*.lst -o $*.o -c $<
 
-%.bin %.lst : %.asm
+%.o %.lst : %.asm
 	@echo NASM $<
 	@$(NASM) $(NASMOPT) -l $*.lst -o $@ $<
 
