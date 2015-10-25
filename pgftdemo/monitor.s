@@ -57,9 +57,9 @@ mon_addr:
         .extern freeAllPages
         .extern clearAllAccessedBits
 run_monitor:
-        enter   $268, $0
-        pusha
-        push    %gs
+        enter   $260, $0
+        pushal
+        pushl   %gs
 
         #----------------------------------------------------------
         # check cpuid for available features (crc32 instruction)
@@ -69,23 +69,25 @@ run_monitor:
         #----------------------------------------------------------
         # setup GS segment register for linear addressing
         #----------------------------------------------------------
-        mov     $linDS, %ax
-        mov     %ax, %gs
+        movw    $linDS, %ax
+        movw    %ax, %gs
 
-        xor     %ecx, %ecx
+        xorl    %ecx, %ecx
 .Lloop:
-        lea     -256(%ebp), %esi
-        mov     %esi, mon_addr
+        leal    -256(%ebp), %esi    # get local buffer address on stack
+        movl    %esi, mon_addr
         call    kgets
-        test    %eax, %eax
-        mov     %eax, %ecx          # buffer index
+        testl   %eax, %eax
+        movl    %eax, %ecx          # buffer index
         jz      .Lmonitor_exit
         movb    (%esi), %al
         cmpb    $10, %al
         je      .Lloop
         cmpb    $13, %al
         je      .Lloop
+        #----------------------------------------------------------
         # commands without parameters
+        #----------------------------------------------------------
         cmpb    $'Q', %al
         je      .Lmonitor_exit
         cmpb    $'H', %al
@@ -98,8 +100,10 @@ run_monitor:
         je      .Lclearaccessedbits
         cmpb    $'#', %al
         je      .Lloop
+        #----------------------------------------------------------
         # commands that require parameters
-        cmp     $3, %cl
+        #----------------------------------------------------------
+        cmpb    $3, %cl
         jb      .Lerror
         cmpb    $'W', %al
         je      .Lwriteaddr
@@ -114,137 +118,137 @@ run_monitor:
         cmpb    $'P', %al
         je      .Lpginvaddr
 .Lerror:
-        mov     %ecx, -260(%ebp)
-        lea     errmsg, %esi
-        mov     $errmsg_len, %ecx
+        #----------------------------------------------------------
+        # print error message
+        #----------------------------------------------------------
+        leal    errmsg, %esi
+        movl    $errmsg_len, %ecx
         call    screen_write
-        mov     -260(%ebp), %ecx
         jmp     .Lloop
 .Lhelp:
-        mov     %ecx, -260(%ebp)
-        lea     hlpmsg, %esi
-        mov     $hlpmsg_len, %ecx
+        #----------------------------------------------------------
+        # print help message
+        #----------------------------------------------------------
+        leal    hlpmsg, %esi
+        movl    $hlpmsg_len, %ecx
         call    screen_write
-        mov     -260(%ebp), %ecx
         jmp     .Lloop
 .Lwriteaddr:
-        inc     %esi
+        #----------------------------------------------------------
+        # write to address
+        #----------------------------------------------------------
+        incl    %esi
         # read linear address
         call    hex2int
-        mov     %eax, %edi
+        movl    %eax, %edi
 
         # read value to write into address
         call    hex2int
         movl    %eax, %gs:(%edi)
         jmp     .Lloop
 .Lreadaddr:
-        mov     %ecx, -260(%ebp)
-        inc     %esi
+        #----------------------------------------------------------
+        # read from address
+        #----------------------------------------------------------
+        incl    %esi
         # read linear address
         call    hex2int
-        mov     %eax, -264(%ebp)        # store address on stack
+        movl    %eax, -260(%ebp)        # store address on stack
 
-        lea     addrmsg, %edi           # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        leal    addrmsg, %edi           # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        mov     -264(%ebp), %edi
+        movl    -260(%ebp), %edi
         movl    %gs:(%edi), %eax
 
-        lea     addrmsg+10, %edi        # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        leal    addrmsg+10, %edi        # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        lea     addrmsg, %esi           # message-offset
-        mov     $addrmsg_len, %ecx      # message-length
+        leal    addrmsg, %esi           # message-offset
+        movl    $addrmsg_len, %ecx      # message-length
         call    screen_write
-        mov     -260(%ebp), %ecx
         jmp     .Lloop
 .Lcrcaddr:
         cmpb    $1, cpuid_sse42_avail
         jne     .Lloop
 
-        mov     %ecx, -260(%ebp)
-        inc     %esi
+        incl    %esi
         # read linear address
         call    hex2int
-        mov     %eax, %edi
+        movl    %eax, %edi
 
         # read number of words
         call    hex2int
 
-        xor     %ecx, %ecx
-        xor     %edx, %edx
-        dec     %edx
+        xorl    %ecx, %ecx
+        xorl    %edx, %edx
+        decl    %edx
 .Lcrcloop:
         crc32l  %gs:(%edi,%ecx,4), %edx
-        inc     %ecx
-        cmp     %eax, %ecx
+        incl    %ecx
+        cmpl    %eax, %ecx
         jb      .Lcrcloop
-        xor     $0xffffffff, %edx
+        xorl    $0xffffffff, %edx
 
-        mov     %edx, %eax
-        lea     addrmsg+10, %edi        # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        movl    %edx, %eax
+        leal    addrmsg+10, %edi        # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        lea     addrmsg+10, %esi        # message-offset
-        mov     $addrmsg_len-10, %ecx   # message-length
+        leal    addrmsg+10, %esi        # message-offset
+        movl    $addrmsg_len-10, %ecx   # message-length
         call    screen_write
-
-        mov     -260(%ebp), %ecx
         jmp     .Lloop
 .Ldumpaddr:
-        inc     %esi
-        sub     $8, %esp
+        incl    %esi
+        subl    $8, %esp
         # read linear address
         call    hex2int
         # put linear address onto stack
-        mov     %eax, (%esp)
+        movl    %eax, (%esp)
 
         # read number of words
         call    hex2int
         # put number of words onto stack
-        mov     %eax, 4(%esp)
+        movl    %eax, 4(%esp)
         call    dump_memory
-        add     $8, %esp
+        addl    $8, %esp
         jmp     .Lloop
 .Lfilladdr:
-        mov     %ecx, -260(%ebp)
-        inc     %esi
+        incl    %esi
         # read linear address
         call    hex2int
         call    get_page_addr
-        test    %eax, %eax
+        testl   %eax, %eax
         jz      .Lloop
 
-        mov     %eax, %edi
+        movl    %eax, %edi
 
         # read fill word
         call    hex2int
 
-        xor     %ecx, %ecx
-        xor     %edx, %edx
-        dec     %edx
+        xorl    %ecx, %ecx
+        xorl    %edx, %edx
+        decl    %edx
 .Lfillloop:
-        mov     %eax, %gs:(%edi,%ecx,4)
+        movl    %eax, %gs:(%edi,%ecx,4)
         crc32l  %gs:(%edi,%ecx,4), %edx
-        inc     %eax
-        inc     %ecx
-        cmp     $1024, %ecx
+        incl    %eax
+        incl    %ecx
+        cmpl    $1024, %ecx
         jb      .Lfillloop
-        xor     $0xffffffff, %edx
+        xorl    $0xffffffff, %edx
 
-        mov     %edx, %eax
-        lea     addrmsg+10, %edi        # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        movl    %edx, %eax
+        leal    addrmsg+10, %edi        # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        lea     addrmsg+10, %esi        # message-offset
-        mov     $addrmsg_len-10, %ecx   # message-length
+        leal    addrmsg+10, %esi        # message-offset
+        movl    $addrmsg_len-10, %ecx   # message-length
         call    screen_write
-
-        mov     -260(%ebp), %ecx
         jmp     .Lloop
 .Lmappedpages:
         call    print_mapped_pages
@@ -256,12 +260,12 @@ run_monitor:
         call    clearAllAccessedBits
         jmp     .Lloop
 .Lpginvaddr:
-        inc     %esi
+        incl    %esi
         call    hex2int
         invlpg  %gs:(%eax)
         jmp     .Lloop
 .Lmonitor_exit:
-        pop     %gs
+        popl    %gs
         popa
         leave
         ret
@@ -271,47 +275,47 @@ run_monitor:
         .global dump_memory
 dump_memory:
         enter   $4, $0
-        pusha
-        push    %gs
+        pushal
+        pushl   %gs
 
         #----------------------------------------------------------
         # setup GS segment register for linear addressing
         #----------------------------------------------------------
-        mov     $linDS, %ax
-        mov     %ax, %gs
+        movw    $linDS, %ax
+        movw    %ax, %gs
 
-        mov     8(%ebp), %ebx    # linear address
-        mov     12(%ebp), %edx   # number of words
+        movl    8(%ebp), %ebx    # linear address
+        movl    12(%ebp), %edx   # number of words
         # cut number to 12-bit
-        and     $0x1fff, %edx
-        mov     %edx, -4(%ebp)   # store number of words
-        xor     %edx, %edx       # counter
-        lea     dumpmsg, %esi    # message pointer
-        mov     %esi, %edi
+        andl    $0x1fff, %edx
+        movl    %edx, -4(%ebp)   # store number of words
+        xorl    %edx, %edx       # counter
+        leal    dumpmsg, %esi    # message pointer
+        movl    %esi, %edi
 .Ldumploop:
-        mov     %gs:(%ebx,%edx,4), %eax
-        mov     $8, %ecx              # number of output digits
+        movl    %gs:(%ebx,%edx,4), %eax
+        movl    $8, %ecx              # number of output digits
         call    int_to_hex
-        add     $9, %edi
-        inc     %edx
-        test    $3, %edx              # multiple of 4?
+        addl    $9, %edi
+        incl    %edx
+        testl   $3, %edx              # multiple of 4?
         jnz     .Lnonewline
-        mov     %esi, %edi
-        mov     $dumpmsg_len, %ecx    # message-length
+        movl    %esi, %edi
+        movl    $dumpmsg_len, %ecx    # message-length
         call    screen_write
 .Lnonewline:
-        cmp     %edx, -4(%ebp)
+        cmpl    %edx, -4(%ebp)
         jne     .Ldumploop
-        and     $3, %edx
+        andl    $3, %edx
         jz      .Ldumpfinished
-        mov     %esi, %edi
-        lea     (%edx,%edx,8), %ecx   # message length
+        movl    %esi, %edi
+        leal    (%edx,%edx,8), %ecx   # message length
         movb    $'\n', -1(%esi,%ecx,1)
         call    screen_write
         movb    $' ', -1(%esi,%ecx,1)
 .Ldumpfinished:
-        pop     %gs
-        popa
+        popl    %gs
+        popal
         leave
         ret
 
@@ -319,52 +323,52 @@ dump_memory:
         .type   print_mapped_pages, @function
 print_mapped_pages:
         enter   $4, $0
-        pusha
+        pushal
 
         # get page directory address
-        mov     %cr3, %esi
+        movl    %cr3, %esi
         # segmented page directory address
-        sub     $LD_DATA_START, %esi
+        subl    $LD_DATA_START, %esi
         # ignore first table table, which contains kernel pages
-        mov     $1, %ecx
+        movl    $1, %ecx
 .Lpdeloop:
         # read page directory entry (PDE)
-        mov     (%esi,%ecx,4), %ebx
+        movl    (%esi,%ecx,4), %ebx
         # check present bit
-        test    $1, %ebx
+        testl   $1, %ebx
         jz      .Lskippde
         # save PDE index
-        mov     %ecx, -4(%ebp)
-        xor     %ecx, %ecx
+        movl    %ecx, -4(%ebp)
+        xorl    %ecx, %ecx
         # mask page table address
-        and     $0xfffff000, %ebx
+        andl    $0xfffff000, %ebx
         # segmented page table address
-        sub     $LD_DATA_START, %ebx
+        subl    $LD_DATA_START, %ebx
 .Lpteloop:
         # read page table entry (PTE)
-        mov     (%ebx,%ecx,4), %edx
+        movl    (%ebx,%ecx,4), %edx
         # check whether entry is zero
-        test    %edx, %edx
+        testl   %edx, %edx
         jz      .Lskippte
         # read PDE index and shift it
-        mov     -4(%ebp), %eax
-        shl     $10, %eax
+        movl    -4(%ebp), %eax
+        shll    $10, %eax
         # add PTE index and shift it
-        add     %ecx, %eax
-        shl     $12, %eax
+        addl    %ecx, %eax
+        shll    $12, %eax
         call    print_mapped_addr
 .Lskippte:
-        inc     %ecx
-        cmp     $1024, %ecx
+        incl    %ecx
+        cmpl    $1024, %ecx
         jb      .Lpteloop
         # restore PDE index
-        mov     -4(%ebp), %ecx
+        movl    -4(%ebp), %ecx
 .Lskippde:
-        inc     %ecx
-        cmp     $1024, %ecx
+        incl    %ecx
+        cmpl    $1024, %ecx
         jb      .Lpdeloop
 
-        popa
+        popal
         leave
         ret
 
@@ -386,25 +390,25 @@ print_mapped_pages:
         .extern screen_write
 print_mapped_addr:
         enter   $0, $0
-        pusha
+        pushal
 
-        lea     pagemsg, %edi           # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        leal    pagemsg, %edi           # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        mov     %edx, %eax
-        lea     pagemsg+10, %edi        # pointer to output string
-        mov     $8, %ecx                # number of output digits
+        movl    %edx, %eax
+        leal    pagemsg+10, %edi        # pointer to output string
+        movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
         call    get_pg_flags
         movl    %eax, pagemsg+19
 
-        lea     pagemsg, %esi           # message-offset
-        mov     $pagemsg_len, %ecx      # message-length
+        leal    pagemsg, %esi           # message-offset
+        movl    $pagemsg_len, %ecx      # message-length
         call    screen_write
 
-        popa
+        popal
         leave
         ret
 
@@ -417,39 +421,39 @@ print_mapped_addr:
 #------------------------------------------------------------------
 get_pg_flags:
         enter   $0, $0
-        push    %edx
+        pushl   %edx
 
-        mov     %eax, %edx
-        and     $0xfff, %edx
-        mov     $0x2e202020, %eax
-        test    $1, %edx             # check 'present' bit
+        movl    %eax, %edx
+        andl    $0xfff, %edx
+        movl    $0x2e202020, %eax
+        testl   $1, %edx             # check 'present' bit
         jz      .Lget_pg_flags_end
-        mov     $'P', %al
-        shl     $8, %eax
-        mov     $'R', %al
-        test    $2, %edx             # check 'read/write' bit
+        movb    $'P', %al
+        shll    $8, %eax
+        movb    $'R', %al
+        testl   $2, %edx             # check 'read/write' bit
         jz      .Lread_only
-        mov     $'W', %al
+        movb    $'W', %al
 .Lread_only:
-        shl     $8, %eax
-        mov     $'a', %al
-        test    $1<<5, %edx          # check 'accessed' bit
+        shll    $8, %eax
+        movb    $'a', %al
+        testl   $1<<5, %edx          # check 'accessed' bit
         jz      .Lnot_accessed
-        mov     $'A', %al
+        movb    $'A', %al
 .Lnot_accessed:
-        shl     $8, %eax
-        mov     $'d', %al
-        test    $1<<6, %edx          # check 'dirty' bit
+        shll    $8, %eax
+        movb    $'d', %al
+        testl   $1<<6, %edx          # check 'dirty' bit
         jz      .Lget_pg_flags_end
-        mov     $'D', %al
+        movb    $'D', %al
         jmp     .Lget_pg_flags_end
 
 .Ltable_not_mapped:
-        mov     $0x20202020, %eax
+        movl    $0x20202020, %eax
 
 .Lget_pg_flags_end:
 
-        pop     %edx
+        popl    %edx
         leave
         ret
 
@@ -457,49 +461,49 @@ get_pg_flags:
         .type   get_page_addr, @function
 get_page_addr:
         enter   $4, $0
-        push    %edx
-        push    %esi
+        pushl   %edx
+        pushl   %esi
 
         # get page directory address
-        mov     %cr3, %esi
+        movl    %cr3, %esi
         # segmented page directory address
-        sub     $LD_DATA_START, %esi
+        subl    $LD_DATA_START, %esi
 
         # store linear address on stack
-        mov     %eax, -4(%ebp)
-        mov     %eax, %edx
+        movl    %eax, -4(%ebp)
+        movl    %eax, %edx
         # initialise default return value
-        xor     %eax, %eax
+        xorl    %eax, %eax
 
         # get page directory entry
-        shr     $22, %edx
+        shrl    $22, %edx
         # PDE #0 is reserved for the Kernel
-        test    %edx, %edx
+        testl   %edx, %edx
         jz      .Lget_page_addr_end
 
-        mov     (%esi,%edx,4), %esi
-        test    $1, %esi
+        movl    (%esi,%edx,4), %esi
+        testl   $1, %esi
         jz      .Lget_page_addr_end
 
-        mov     -4(%ebp), %edx
-        shr     $12, %edx
-        and     $0x3ff, %edx
-        and     $0xfffff000, %esi
-        lea     (%esi,%edx,4), %esi
+        movl    -4(%ebp), %edx
+        shrl    $12, %edx
+        andl    $0x3ff, %edx
+        andl    $0xfffff000, %esi
+        leal    (%esi,%edx,4), %esi
         # segmented page table address
-        sub     $LD_DATA_START, %esi
-        mov     (%esi), %edx
-        test    $1, %edx
+        subl    $LD_DATA_START, %esi
+        movl    (%esi), %edx
+        testl   $1, %edx
         jz      .Lget_page_addr_end
 
         # load linear address from stack
-        mov     -4(%ebp), %eax
+        movl    -4(%ebp), %eax
         # mask page offset
-        and     $0xfffff000, %eax
+        andl    $0xfffff000, %eax
 
 .Lget_page_addr_end:
-        pop     %esi
-        pop     %edx
+        popl    %esi
+        popl    %edx
         leave
         ret
 
@@ -519,63 +523,62 @@ get_page_addr:
         .type   hex2int, @function
 hex2int:
         enter   $0, $0
-        push    %edx
+        pushl   %edx
 
-        xor     %eax, %eax
+        xorl    %eax, %eax
 .Lspcloop:
-        mov     (%esi), %dl
-        test    %dl, %dl
+        movb    (%esi), %dl
+        testb   %dl, %dl
         jz      .Lexit
-        cmp     $'\n', %dl
+        cmpb    $'\n', %dl
         jz      .Lexit
-        cmp     $'\r', %dl
+        cmpb    $'\r', %dl
         jz      .Lexit
-        inc     %esi
-        cmp     $' ', %dl
+        incl    %esi
+        cmpb    $' ', %dl
         je      .Lspcloop
-        dec     %esi
+        decl    %esi
 .Lhexloop:
-        mov     (%esi), %dl
-        test    %dl, %dl
+        movb    (%esi), %dl
+        testb   %dl, %dl
         jz      .Lexit
-        cmp     $'\n', %dl
+        cmpb    $'\n', %dl
         jz      .Lexit
-        cmp     $'\r', %dl
+        cmpb    $'\r', %dl
         jz      .Lexit
-        cmp     $' ', %dl
+        cmpb    $' ', %dl
         jz      .Lexit
-        cmp     $0, %dl
+        cmpb    $0, %dl
         jb      .Lexit
         # dl >= '0'
-        cmp     $'f', %dl
+        cmpb    $'f', %dl
         ja      .Lexit
         # dl >= '0' && dl <= 'f'
-        cmp     $'9', %dl
-        mov     $'0', %dh
+        cmpb    $'9', %dl
+        movb    $'0', %dh
         jbe     .Lconv_digit     # dl >= '0' && dl <= '9'
         # dl > '9' && dl <= 'f'
-        cmp     $'A', %dl
+        cmpb    $'A', %dl
         jb      .Lexit
         # dl >= 'A' && dl <= 'f'
-        cmp     $'F', %dl
-        mov     $'A'-10, %dh
+        cmpb    $'F', %dl
+        movb    $'A'-10, %dh
         jbe     .Lconv_digit     # dl => 'A' && dl <= 'F'
         # dl > 'F' && dl <= 'f'
-        cmp     $'a', %dl
+        cmpb    $'a', %dl
         jb      .Lexit
         # dl >= 'a' && dl <= 'f'
-        mov     $'a'-10, %dh
+        movb    $'a'-10, %dh
 .Lconv_digit:
-        sub     %dh, %dl        # convert hex digit to int 0..15
-        shl     $4, %eax        # multiply result by 16
+        subb    %dh, %dl        # convert hex digit to int 0..15
+        shll    $4, %eax        # multiply result by 16
         movzxb  %dl, %edx
-        add     %edx, %eax      # add digit value to result
-        inc     %esi
+        addl    %edx, %eax      # add digit value to result
+        incl    %esi
         jmp     .Lhexloop
 .Lexit:
-        inc     %esi
-        pop     %edx
+        incl    %esi
+        popl    %edx
         leave
         ret
-
 
