@@ -39,3 +39,20 @@ prior to executing the image. The module start.s defines the signature layout as
  ```0x00400```  |       BIOS Data Area (BDA)                          | sel\_bs
  ```0x00000```  |         Real Mode Interrupt Vector Table            |
 
+
+# Monitor Command Description
+
+All addresses and numbers are interpreted hexadecimal. Leading zeroes can be omitted
+
+ Command			|		Description
+ ------------------:|:-----------------------------------------------------------------------------------------------------------
+ ```H```			|	Print help message
+ ```Q```			|	Quit monitor
+ ```M```			|	Show non-kernel page table entries
+ ```C```			| 	Release allocated pages (except kernel)
+ ```D ADDR NUM```	|	Print ```NUM``` of DWORDS beginning from ```ADDR``` 
+ ```X ADDR NUM```	|	Calculate CRC32 for ```NUM``` DWORDS beginning from ```ADDR```
+ ```P ADDR```		|	Invalidate TLB entry for virtual address ```ADDR```
+ ```R ADDR```		|	Read from address ```ADDR```
+ ```F ADDR DWORD```	|	Fill page belonging to ```ADDR``` with 32-bit DWORD ```DWORD``` incremented by one for each address step
+ ```W ADDR DWORD```	|	Write 32-bit DWORD ```DWORD``` to address ```ADDR```
