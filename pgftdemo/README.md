@@ -45,7 +45,7 @@ prior to executing the image. The module start.s defines the signature layout as
 All addresses and numbers are interpreted hexadecimal. Leading zeroes can be omitted
 
  Command			|		Description
- ------------------:|:-----------------------------------------------------------------------------------------------------------
+ :------------------|:-----------------------------------------------------------------------------------------------------------
  ```H```			|	Print help message
  ```Q```			|	Quit monitor
  ```M```			|	Show non-kernel page table entries
