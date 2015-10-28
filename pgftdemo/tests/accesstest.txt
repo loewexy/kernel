@@ -1,0 +1,23 @@
+##
+# free pages, nothing should happen
+C
+M
+
+# Read some addresses to get pages in pagetable with accessed bit
+R 0804b000
+R 0804a000
+R 08049000
+R 08048000
+M
+
+# Clear accessed bits
+A
+M
+
+#Read again for verification
+R 08049000
+R 08048000
+W 0804a000 cafecafe
+M
+
+Q

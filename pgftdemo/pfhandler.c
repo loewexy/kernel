@@ -57,6 +57,7 @@ uint32_t getIndexInStorageBitfield(uint32_t, uint32_t);
 void copyPage(uint32_t, uint32_t);
 void clearPage(uint32_t);
 void freeAllPages();
+void clearAllAccessedBits();
 
 extern void invalidate_addr(uint32_t);
 extern uint32_t *get_page_dir_addr(void);
@@ -245,6 +246,14 @@ freeAllPages() {
 
 
 } // end of freeAllPages
+
+void clearAllAccessedBits()
+{
+	for (uint32_t i = 0; i < PTE_NUM; i++)
+	{
+		programm_page_table[i] &= ~PAGE_IS_ACCESSED;
+	}	
+} // end of clearAllAccessedBits
 
 //==============================================================================
 //END OF MEMORY FUNCTIONS//

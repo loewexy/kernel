@@ -14,6 +14,7 @@ hlpmsg: .ascii  "Monitor Commands:\r\n"
         .ascii  "  Q           - Quit monitor\r\n"
         .ascii  "  M           - Show non-kernel page table entries\r\n"
         .ascii  "  C           - Release allocated pages (except kernel)\r\n"
+        .ascii  "  A           - Reset all accessed bits in page table\r\n"
         .ascii  "  D ADDR NUM  - Dump NUM words beginning at address ADDR\r\n"
         .ascii  "  X ADDR NUM  - Calculate CRC32 for NUM words starting at address ADDR\r\n"
         .ascii  "  P ADDR      - Invalidate TLB entry for virtual address ADDR\r\n"
@@ -54,6 +55,7 @@ mon_addr:
         .extern check_cpuid
         .extern kgets
         .extern freeAllPages
+        .extern clearAllAccessedBits
 run_monitor:
         enter   $268, $0
         pusha
@@ -92,6 +94,8 @@ run_monitor:
         je      .Lmappedpages
         cmpb    $'C', %al
         je      .Lreleasepages
+        cmpb    $'A', %al
+        je      .Lclearaccessedbits
         cmpb    $'#', %al
         je      .Lloop
         # commands that require parameters
@@ -247,6 +251,9 @@ run_monitor:
         jmp     .Lloop
 .Lreleasepages:
         call    freeAllPages
+        jmp     .Lloop
+.Lclearaccessedbits:
+        call    clearAllAccessedBits
         jmp     .Lloop
 .Lpginvaddr:
         inc     %esi
