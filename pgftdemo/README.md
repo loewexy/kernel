@@ -50,9 +50,11 @@ All addresses and numbers are interpreted hexadecimal. Leading zeroes can be omi
  ```Q```			|	Quit monitor
  ```M```			|	Show non-kernel page table entries
  ```C```			| 	Release allocated pages (except kernel)
+ ```A```			|	Reset all accessd bits in page table
  ```D ADDR NUM```	|	Print ```NUM``` of DWORDS beginning from ```ADDR``` 
  ```X ADDR NUM```	|	Calculate CRC32 for ```NUM``` DWORDS beginning from ```ADDR```
  ```P ADDR```		|	Invalidate TLB entry for virtual address ```ADDR```
  ```R ADDR```		|	Read from address ```ADDR```
  ```F ADDR DWORD```	|	Fill page belonging to ```ADDR``` with 32-bit DWORD ```DWORD``` incremented by one for each address step
  ```W ADDR DWORD```	|	Write 32-bit DWORD ```DWORD``` to address ```ADDR```
+ 
