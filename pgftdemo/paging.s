@@ -30,6 +30,8 @@
         #-------------------------------------------------------------------
         .extern         LD_DATA_START
         .extern         LD_IMAGE_START
+        .extern         _rodata        # start of .rodata segment
+        .extern         _bss           # start of .bss segment
 
 
 #-------------------------------------------------------------------
@@ -75,21 +77,54 @@ enable_paging:
         #----------------------------------------------------------
         # initialise kernel page table entries to provide a 1:1
         # mapping between linear and physical addresses
-        # Note: the text segment, located between LD_IMAGE_START
-        # and LD_DATA_START, is write-protected
+        #
+        # Read-only or read-write protection is assigned to pages
+        # according to the following rules:
+        # - text segment is read-only
+        # - data segment is read-write
+        # - rodata segment is read-only
+        # - bss is read-write
+        # - everything else is read-write
         #----------------------------------------------------------
         mov     $page_table_kernel, %ebx
         xor     %ecx, %ecx
         xor     %edx, %edx
 .Lpgtableloop:
-        mov     $PG_PRESENT+PG_RW, %dl
+        # addresses below LD_IMAGE_START are always RW
         cmp     $LD_IMAGE_START, %edx
         jb      .Lpgrw
+        # otherwise, the address is either within the
+        # text segment (i.e. below the data segment) or
+        # above
         cmp     $LD_DATA_START, %edx
+        jb      .Lpgro
+        # otherwise, the address is either in the data,
+        # rodata or bss segment or above the image.
+        # In any case, we need to convert the linear
+        # address in regsiter EDX into a logical address
+        # in order to be able to compare the address with
+        # the linker symbols (which are logical addresses).
+        # EDX: linear address
+        # EAX: logical address
+        mov     %edx, %eax
+        sub     $LD_DATA_START, %eax
+        # addresses in and above the bss segment are always RW
+        cmp     $_bss, %eax
         jae     .Lpgrw
+        # addresses in the data segment (i.e. below the rodata
+        # segment) are always RW
+        cmp     $_rodata, %eax
+        jb      .Lpgrw
+        # otherwise, the address is in the rodata segment
+        # and always RO
+.Lpgro:
         mov     $PG_PRESENT, %dl
+        jmp     .Lpgmap
 .Lpgrw:
+        mov     $PG_PRESENT+PG_RW, %dl
+.Lpgmap:
         movl    %edx, (%ebx,%ecx,4)
+        xor     %dl, %dl
         inc     %ecx
         add     $PG_SIZE, %edx
         cmp     $PG_SIZE/4, %ecx
@@ -99,9 +134,10 @@ enable_paging:
         # convert logical kernel page table addess in EBX to a
         # linear address and write this address into PDE #0
         #----------------------------------------------------------
+        mov     $page_dir, %eax
         add     $LD_DATA_START, %ebx    # add .data start address
         or      $PG_PRESENT+PG_RW, %ebx
-        mov     %ebx, (%eax)
+        mov     %ebx, (%eax)            # eax: page dir address
 
         #----------------------------------------------------------
         # setup page-directory address in control register CR3

@@ -89,15 +89,6 @@ regGDT: .word   limGDT
         # IDT is defined in isr.o in libkernel library
 #------------------------------------------------------------------
 
-        #----------------------------------------------------------
-        # output string for page directory address
-        #----------------------------------------------------------
-pgdirmsg:
-        .ascii  "Page Directory is at linear address 0x"
-pgdiraddr:
-        .ascii  "________\r\n"
-        .equ    pgdirmsg_len, (.-pgdirmsg)
-
 rwchar: .ascii  "RW"
 
 oldesp: .long   0x00000000
@@ -114,8 +105,6 @@ oldesp: .long   0x00000000
         .global main
         .extern init_user_pages
         .extern enable_paging
-        .extern int_to_hex
-        .extern screen_write
         .extern screen_sel_page
         .extern run_monitor
 main:
@@ -160,17 +149,6 @@ main:
         # initialise user/program page tables
         #----------------------------------------------------------
         call    init_user_pages
-
-        #----------------------------------------------------------
-        # print the page directory address
-        #----------------------------------------------------------
-        mov     %cr3, %eax
-        lea     pgdiraddr, %edi
-        mov     $8, %ecx
-        call    int_to_hex
-        lea     pgdirmsg, %esi          # message-offset into ESI
-        mov     $pgdirmsg_len, %ecx     # message-length into ECX
-        call    screen_write
 
         #----------------------------------------------------------
         # setup GS segment register for linear addressing

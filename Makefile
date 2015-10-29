@@ -4,8 +4,7 @@
 #
 #=============================================================================
 
-SUBDIRS     = boot libkernel
-SUBDIRS    += welcome timeoday tickdemo
+SUBDIRS     = boot libkernel libminic
 SUBDIRS    += pmhello pgftdemo
 
 .PHONY: all subdirs $(SUBDIRS)
@@ -18,7 +17,6 @@ subdirs : $(SUBDIRS)
 $(SUBDIRS):
 	$(MAKE) -C $@
 
-timeoday: boot
 pmtimer: boot
 
 .PHONY: clean

@@ -1,8 +1,38 @@
 
-#ifndef PFHANDLER_H
-#define PFHANDLER_H        1
+#ifndef _PGFTDEMO_H
+#define _PGFTDEMO_H        1
 
 #include "types.h"
+
+#ifdef __DHBW_KERNEL__
+/*
+ * Linear address offset of the data segment, which is defined in
+ * the linker scriot (ldscript)
+ *
+ * Note:
+ * use only in Kernel context with x86 segmentation being enabled
+ */
+extern uint32_t LD_DATA_START;
+extern uint32_t LD_IMAGE_START;
+
+/*
+ * convert a logical address into a linear address using the
+ * data segment offset defined in the linker script
+ */
+#define LINADDR(addr)         ((uint32_t)(addr) + (uint32_t)&LD_DATA_START)
+
+/*
+ * convert a linear address into a logical address using the
+ * data segment offset defined in the linker script
+ */
+#define LOGADDR(addr)         (uint32_t *)((addr) - (uint32_t)&LD_DATA_START)
+
+#else
+
+#define LINADDR(addr)         (uint32_t)(addr)
+#define LOGADDR(addr)         (uint32_t *)(addr)
+
+#endif
 
 #define PAGE_SIZE                 0x1000
 
@@ -48,7 +78,6 @@
 #define PDE_STACK_PT          PDE(STACK_START_ADDR)
 
 
-
 typedef struct pg_struct {
     uint32_t ft_addr;     // faulting linear memory address
     uint32_t pde;         // Page Directory Entry
@@ -61,9 +90,14 @@ typedef struct pg_struct {
 } pg_struct_t;
 
 
+/* pfhandler.c */
 extern void init_user_pages(void);
 extern void freeAllPages(void);
 extern pg_struct_t *pfhandler(uint32_t ft_addr);
 
-#endif  /* pfhandler.h */
+/* paging.s */
+extern void invalidate_addr(uint32_t);
+extern uint32_t *get_page_dir_addr(void);
+
+#endif  /* _PGFTDEMO_H */
 

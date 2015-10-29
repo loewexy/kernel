@@ -55,9 +55,16 @@ SECTIONS
         data = .; _data = .; __data = .;
         sdata = ADDR(.data);
         *(.data)
-        *(.rodata*)
         PROVIDE(edata = .);
-        . = ALIGN(16);
+        . = ALIGN(4096);
+    }
+    .rodata : /* read-only data section */
+    {
+        rodata = .; _rodata = .; __rodata = .;
+        srodata = ADDR(.rodata);
+        *(.rodata*)
+        PROVIDE(erodata = .);
+        . = ALIGN(4096);
     }
     .bss :
     {
@@ -67,5 +74,13 @@ SECTIONS
         . = ALIGN(16);
     }
     end = .; _end = .; __end = .;
+
+    /* Remove unwanted information */
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+        *(.rel.eh_frame*)
+        *(.rela.eh_frame*)
+    }
 }
 

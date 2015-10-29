@@ -33,3 +33,6 @@
 # Include some specific files
 !stakernel.tar.gz
 
+# Executable files to be excluded
+libminic/hosttest/printf_test
+

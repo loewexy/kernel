@@ -1,25 +1,51 @@
-//----------------------------------------------------------------
-//      asm_printf.s
-//
-//      Here we have written our own (simplified) implementation
-//      for the customary 'printf()' library-function:
-//
-//               int asm_printf( char *fmt, ... );
-//
-//      Based on: Prof. Allan Cruse, University of San Francisco
-//----------------------------------------------------------------
+#----------------------------------------------------------------
+# asm_printf.s
+#
+# int asm_printf( char *fmt, ... );
+#
+# Original version based on:
+# Prof. Allan Cruse, University of San Francisco
+#----------------------------------------------------------------
 
+#-----------------------------------------------------------------
+# Stack Frame Layout
+#-----------------------------------------------------------------
+#
+#                 Byte 0
+#                      V
+#    +-----------------+
+#    |       ...       |
+#    +-----------------+
+#    |      arg #1     |  +12  0xc
+#    +-----------------+
+#    |    format ptr   |   +8  0x8
+#    +-----------------+
+#    |  Return Address |   +4  0x4
+#    +-----------------+
+#    |       EBP       |  <-- ebp
+#    +-----------------+
+#    |   local buffer  |  <-- ebp - BUFSIZE
+#    +-----------------+
+#
+#-----------------------------------------------------------------
+
+#==================================================================
+# S E C T I O N   R O D A T A
+#==================================================================
+        .section        .rodata
+
+        .align 4
+hexuc:  .ascii "0123456789ABCDEF +-"
+        .align 4
+hexlc:  .ascii "0123456789abcdef +-"
+
+
+#==================================================================
+# S E C T I O N   T E X T
+#==================================================================
         .section        .text
 
-        .extern hex_digits_lc
-        .extern hex_digits_uc
-
-.ifdef __DHBW_KERNEL__
         .extern screen_write
-.else
-        .extern write
-.endif
-
         .global asm_printf
         .type   asm_printf, @function
 asm_printf:
@@ -27,11 +53,9 @@ asm_printf:
         movl    %esp, %ebp              # setup local stack-frame
         subl    $0x200, %esp            # create space for radix, buffer etc
         pushal                          # preserve cpu registers
-.ifdef __DHBW_KERNEL__
         push    %es
         mov     %ds, %ax
         mov     %ax, %es
-.endif
 
         lea     -0x200(%ebp), %edi      # buffer address into EDI
         movl    8(%ebp), %esi           # fmt parameter into ESI
@@ -53,24 +77,23 @@ asm_printf:
         lea     -0x200(%ebp), %esi      # buffer address into ESI
         subl    %esi, %edi              # compute output length
         movl    %edi, -12(%ebp)         # and save it on stack
-.ifdef __DHBW_KERNEL__
         mov     %edi, %ecx
         call    screen_write
-.else
-        push    %edi
-        push    %esi
-        pushl   $1
-        call    write
-        add     $12, %esp
-.endif
         jmp     .Lreturn                # then exit this function
 
 .Lescape:
+        movb    $0, -8(%ebp)            # reset format to zero
+        movb    $0, -6(%ebp)            # reset sign character
         incl    %esi                    # skip past escape-code
-        movb    $16, -7(%ebp)
+        movb    $16, -7(%ebp)           # 16: index of space char in hexdigits
+        cmpb    $'+', (%esi)
+        jne     .Lskipplus
+        movb    $17, -6(%ebp)           # 17: index of '+' char in hexdigits
+        incl    %esi
+.Lskipplus:
         cmpb    $'0', (%esi)            # test: zero digit
         jne     .Ldigitloop
-        movb    $17, -7(%ebp)
+        movb    $0, -7(%ebp)            # 0: index of zero char in hexdigits
 .Ldigitloop:
         lodsb                           # and fetch escape-type
         test    %al, %al                # test: null-terminator?
@@ -82,8 +105,8 @@ asm_printf:
         ja      .Lnodigit
         sub     $'0', %al
         movzxb  -8(%ebp), %edx
-        lea     (%edx,%edx,4), %edx
-        shl     $1, %edx
+        lea     (%edx,%edx,4), %edx     # multiply edy by 5
+        shl     $1, %edx                # and then by 2
         add     %al, %dl
         movb    %dl, -8(%ebp)
         jmp     .Ldigitloop
@@ -95,8 +118,13 @@ asm_printf:
         cmpb    $'s', %al               # wanted string format?
         je      .Ldo_string             # yes, copy string
 
-        movl    $hex_digits_lc, %ebx    # point EBX to lc digits table
-        cmpb    $'d', %al               # wanted decimal format?
+        movl    $hexlc, %ebx            # point EBX to lc digits table
+
+        cmpb    $'d', %al               # wanted signed decimal format?
+        movl    $-10, -4(%ebp)          # yes, use -10 as the radix
+        je      .Ldo_tx                 # convert number to string
+
+        cmpb    $'u', %al               # wanted unsigned decimal format?
         movl    $10, -4(%ebp)           # yes, use 10 as the radix
         je      .Ldo_tx                 # convert number to string
 
@@ -108,7 +136,7 @@ asm_printf:
         cmpb    $'x', %al               # wanted hexadecimal format?
         je      .Ldo_tx                 # convert number to string
 
-        movl    $hex_digits_uc, %ebx    # point EBX to uc digits table
+        movl    $hexuc, %ebx            # point EBX to uc digits table
         cmpb    $'X', %al               # wanted hexadecimal format?
         je      .Ldo_tx                 # convert number to string
 
@@ -121,6 +149,14 @@ asm_printf:
         movl    12(%ebp,%ecx,4), %eax   # get next argument in EAX
         incl    %ecx                    # and advance argument-index
 
+        cmpl    $0, -4(%ebp)            # is radix negative?
+        jns     .Lskipsign              # no, then print as unsigned
+        negl    -4(%ebp)                # convert radix
+        test    %eax, %eax              # is integer argument negative?
+        jns     .Lskipsign              # no, then do not convert
+        neg     %eax                    # convert integer argument
+        movb    $18, -6(%ebp)           # 18: index of '-' char in hexdigits
+.Lskipsign:
         pushl   %ecx                    # preserve argument-index
         xorl    %ecx, %ecx              # initialize digit-counter
 .Lnxdiv:
@@ -128,12 +164,17 @@ asm_printf:
         divl    -4(%ebp)                # divide by selected radix
         push    %edx                    # push remainder onto stack
         incl    %ecx                    # and increment digit-count
-        orl     %eax, %eax              # test: quotient was zero?
+        test    %eax, %eax              # test: quotient was zero?
         jnz     .Lnxdiv                 # no, another digit needed
-        movb    -7(%ebp), %al
+        movb    -6(%ebp), %al           # read sign character
+        test    %al, %al                # is a sign set?
+        jz      .Lnxadj                 # no, then don't add a sign
+        push    %eax
+        inc     %cl
 .Lnxadj:
         cmp     %cl, -8(%ebp)
         jbe     .Lnxdgt
+        movb    -7(%ebp), %al           # read fill character
         pushl   %eax
         inc     %cl
         jmp     .Lnxadj
@@ -170,14 +211,10 @@ asm_printf:
         movl    $-1, -12(%ebp)          # store error indicator
 
 .Lreturn:
-.ifdef __DHBW_KERNEL__
         pop     %es
-.endif
         popal                           # restore saved registers
         movl    -12(%ebp), %eax         # copy return-value to EAX
         movl    %ebp, %esp              # discard temporary storage
         popl    %ebp                    # restore saved frame-pointer
         ret                             # return control to caller
-
-        .end                            # ignore everything beyond
 
