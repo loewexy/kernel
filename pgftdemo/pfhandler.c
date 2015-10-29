@@ -133,7 +133,7 @@ getPageFrame() {
     uint32_t memoryAddress;
     memoryAddress = getFreeMemoryAddress();
     if (memoryAddress != INVALID_ADDR) {
-		clearPage(memoryAddress);
+                clearPage(memoryAddress);
         return memoryAddress;
     }
     //There is no page left
@@ -235,10 +235,11 @@ freeAllPages() {
 
 void clearAllAccessedBits()
 {
-	for (uint32_t i = 0; i < PTE_NUM; i++)
-	{
-		programm_page_table[i] &= ~PAGE_IS_ACCESSED;
-	}	
+    for (uint32_t i = 0; i < PTE_NUM; i++) {
+        // TODO: clear access bit in stack page table
+        page_table_program[i] &= ~PAGE_IS_ACCESSED;
+        invalidate_addr((PDE_PROGRAMM_PT << PDE_SHIFT) | (i << PTE_SHIFT));
+    }
 } // end of clearAllAccessedBits
 
 //==============================================================================
