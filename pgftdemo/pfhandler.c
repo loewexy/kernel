@@ -17,45 +17,50 @@ uint32_t memoryPageCounter = PAGES_PHYSICAL_NUM;
 uint32_t replace_pde_offset = 1;
 uint32_t replace_pte_offset = 0;
 
-
-uint32_t dbg_ft_addr;
-
+/*
+ * Structure representing a pageEntry currently in use
+ * pde - index in pde
+ * pte - index in pte
+ * memAddr - virtual address from this entry
+ */
 struct pageEntry {
     uint32_t pde;
     uint32_t pte;
     uint32_t memAddr;
 };
 
+//Bitfiels for management of storage and memory pages currently in use
 struct pageEntry storageBitfield[PAGES_SWAPPED_NUM];
 struct pageEntry physicalMemoryBitfield[PAGES_PHYSICAL_NUM];
 
+//Structure for returning from pfhandler()
 static pg_struct_t pg_struct;
 
-
+//Memory functions
+uint32_t getPageFrame();
 uint32_t setPresentBit(uint32_t, uint32_t, uint32_t);
 uint32_t removePresentBit(uint32_t, uint32_t);
 uint32_t isPresentBit(uint32_t, uint32_t);
-uint32_t getClassOfPage(uint32_t);
-uint32_t getAddressOfPageToReplace();
-uint32_t isPresentBit(uint32_t, uint32_t);
-uint32_t getPageFrame();
-uint32_t swap(uint32_t virtAddr);
 uint32_t getFreeMemoryAddress();
-uint32_t getVirtAddrOfFrameOnDisk(uint32_t, uint32_t);
-uint32_t getIndexInStorageBitfield(uint32_t, uint32_t);
-void copyPage(uint32_t, uint32_t);
-void clearPage(uint32_t);
 void freeAllPages();
 void clearAllAccessedBits();
+void copyPage(uint32_t, uint32_t);
+void clearPage(uint32_t);
+
+//Disk functions
+uint32_t getVirtAddrOfFrameOnDisk(uint32_t, uint32_t);
+uint32_t getIndexInStorageBitfield(uint32_t, uint32_t);
+uint32_t swap(uint32_t virtAddr);
+
+//Functions of paging algorithm
+uint32_t getClassOfPage(uint32_t);
+uint32_t getAddressOfPageToReplace();
 
 
-pg_struct_t *
-pfhandler(uint32_t ft_addr)
+pg_struct_t *pfhandler(uint32_t ft_addr)
 {
     int pde = PDE(ft_addr);
     int pte = PTE(ft_addr);
-
-    dbg_ft_addr = ft_addr;
 
     pg_struct.pde = pde;
     pg_struct.pte = pte;
@@ -242,11 +247,6 @@ void clearAllAccessedBits()
     }
 } // end of clearAllAccessedBits
 
-//==============================================================================
-//END OF MEMORY FUNCTIONS//
-//==============================================================================
-
-
 void copyPage(uint32_t src_address, uint32_t dst_address) {
     uint32_t *src = LOGADDR(src_address & PAGE_ADDR_MASK);
     uint32_t *dst = LOGADDR(dst_address & PAGE_ADDR_MASK);
@@ -262,6 +262,9 @@ void clearPage(uint32_t address) {
     }
 } // end of clearPage
 
+//==============================================================================
+//END OF MEMORY FUNCTIONS//
+//==============================================================================
 
 
 //==============================================================================
@@ -288,8 +291,6 @@ uint32_t getIndexInStorageBitfield(uint32_t pde, uint32_t pte) {
     return INVALID_INDEX;
 } // end of getIndexInStorageBitfield
 
-uint32_t dbg_swap_addr;
-uint32_t dbg_swap_result;
 
 uint32_t swap(uint32_t virtAddr)
 {
@@ -300,7 +301,6 @@ uint32_t swap(uint32_t virtAddr)
 
     //printf("Swap:\nPDE: %x PTE: %x\n",pde,pte);
     uint32_t storageAddr;
-    dbg_swap_addr = virtAddr;
 
     invalidate_addr(virtAddr);
     uint32_t * page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
@@ -339,14 +339,19 @@ uint32_t swap(uint32_t virtAddr)
 
     page_table[pte] &= (~PAGE_IS_PRESENT);
 
-    dbg_swap_result = memoryAddr;
-
     return memoryAddr;
 
 } //END OF SWAP
 
-uint32_t
-getAddressOfPageToReplace() {
+//==============================================================================
+//END OF DISK FUNCTIONS//
+//==============================================================================
+
+//==============================================================================
+//START OF REPLACEMENT ALGORITHMS//
+//==============================================================================
+
+uint32_t getAddressOfPageToReplace() {
     /* Implementation of NRU
      * 
     A=0, M=0 (nicht gelesen, nicht verändert)
@@ -438,9 +443,8 @@ uint32_t getClassOfPage(uint32_t flags) {
 } // end of getClassOfPage
 
 //==============================================================================
-//END OF DISK FUNCTIONS//
+//END OF REPLACEMENT ALGORITHMS//
 //==============================================================================
-
 
 //==============================================================================
 //Initialize paging//
