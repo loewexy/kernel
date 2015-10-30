@@ -117,26 +117,29 @@ run_monitor:
         je      .Lfilladdr
         cmpb    $'P', %al
         je      .Lpginvaddr
-.Lerror:
+
         #----------------------------------------------------------
         # print error message
         #----------------------------------------------------------
+.Lerror:
         leal    errmsg, %esi
         movl    $errmsg_len, %ecx
         call    screen_write
         jmp     .Lloop
-.Lhelp:
+
         #----------------------------------------------------------
         # print help message
         #----------------------------------------------------------
+.Lhelp:
         leal    hlpmsg, %esi
         movl    $hlpmsg_len, %ecx
         call    screen_write
         jmp     .Lloop
-.Lwriteaddr:
+
         #----------------------------------------------------------
         # write to address
         #----------------------------------------------------------
+.Lwriteaddr:
         incl    %esi
         # read linear address
         call    hex2int
@@ -144,12 +147,18 @@ run_monitor:
 
         # read value to write into address
         call    hex2int
+
+        #----------------------------------------------------------
+        # memory write access
+        #----------------------------------------------------------
+mon_inst_wr_addr:
         movl    %eax, %gs:(%edi)
         jmp     .Lloop
-.Lreadaddr:
+
         #----------------------------------------------------------
         # read from address
         #----------------------------------------------------------
+.Lreadaddr:
         incl    %esi
         # read linear address
         call    hex2int
@@ -159,7 +168,12 @@ run_monitor:
         movl    $8, %ecx                # number of output digits
         call    int_to_hex
 
-        movl    -260(%ebp), %edi
+        movl    -260(%ebp), %edi        # restore address
+
+        #----------------------------------------------------------
+        # memory read access
+        #----------------------------------------------------------
+mon_inst_rd_addr:
         movl    %gs:(%edi), %eax
 
         leal    addrmsg+10, %edi        # pointer to output string
@@ -170,6 +184,10 @@ run_monitor:
         movl    $addrmsg_len, %ecx      # message-length
         call    screen_write
         jmp     .Lloop
+
+        #----------------------------------------------------------
+        # calculate CRC32
+        #----------------------------------------------------------
 .Lcrcaddr:
         cmpb    $1, cpuid_sse42_avail
         jne     .Lloop
@@ -201,6 +219,10 @@ run_monitor:
         movl    $addrmsg_len-10, %ecx   # message-length
         call    screen_write
         jmp     .Lloop
+
+        #----------------------------------------------------------
+        # dump memory contents
+        #----------------------------------------------------------
 .Ldumpaddr:
         incl    %esi
         subl    $8, %esp
@@ -216,6 +238,10 @@ run_monitor:
         call    dump_memory
         addl    $8, %esp
         jmp     .Lloop
+
+        #----------------------------------------------------------
+        # fill memory contents
+        #----------------------------------------------------------
 .Lfilladdr:
         incl    %esi
         # read linear address
