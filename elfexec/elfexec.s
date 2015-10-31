@@ -128,10 +128,16 @@ theGDT:
         .equ    limGDT, (. - theGDT)-1  # our GDT's segment-limit
 #------------------------------------------------------------------
         # image for GDTR register
+        #
+        #----------------------------------------------------------
+        # Note: the linear address offset of the data segment needs
+        #       to be added to theGDT at run-time before this GDT
+        #       is installed
+        #----------------------------------------------------------
         .align  16
         .global regGDT
 regGDT: .word   limGDT
-        .long   theGDT+0x20000          # create linear address
+        .long   theGDT
 #------------------------------------------------------------------
 # T A S K   S T A T E   S E G M E N T S
 #------------------------------------------------------------------
@@ -286,21 +292,23 @@ finis:
         xor     %eax, %eax
         call    screen_sel_page
 
-        #-----------------------------------------------------------
-        # recover former stack
-        #-----------------------------------------------------------
-        lss     tossav, %esp
-
-        ret
+        #----------------------------------------------------------
+        # trigger triple fault in order to reboot
+        #----------------------------------------------------------
+        movl    $0, theIDT+13*8
+        movl    $0, theIDT+13*8+4
+        lidt    theIDT
+        int     $13
+        hlt     # just in case ;-)
 
 #------------------------------------------------------------------
         .section        .data
         .align   4
-finmsg: .ascii  "\n\nProgram finished. "
-        .ascii  "Press any key to return to bootloader\n"
+finmsg: .ascii  "\r\n\r\nProgram finished. "
+        .ascii  "Press any key to reboot\r\n"
         .equ    finmsglen, (.-finmsg)
 elferrmsg:
-        .ascii  "\nERROR: Cannot load ELF image.\n"
+        .ascii  "\r\nERROR: Cannot load ELF image.\r\n"
         .equ    elferrmsglen, (.-elferrmsg)
 #------------------------------------------------------------------
         .section        .text
@@ -778,6 +786,14 @@ irqPIT:
         # setup stack frame access via ebp
         #-----------------------------------------------------------
         enter   $0, $0
+        pushl   %fs
+        pushl   %es
+
+        #----------------------------------------------------------
+        # setup access to BIOS data area using the FS segment
+        #----------------------------------------------------------
+        mov     $sel_bs, %ax
+        mov     %ax, %fs
 
         #-----------------------------------------------------------
         # increment the 32-bit counter for timer-tick interrupts
@@ -874,6 +890,12 @@ irqPIT:
         mov     $10, %cx
         call    uint32_to_dec
 
+        #----------------------------------------------------------
+        # setup access to CGA video memory using the ES segment
+        #----------------------------------------------------------
+        mov     $sel_cga, %ax
+        mov     %ax, %es
+
         #-----------------------------------------------------------
         # loop to write character-codes to the screen
         #-----------------------------------------------------------
@@ -894,7 +916,8 @@ irqPIT:
         movzxb  (scnid), %eax
         call    screen_sel_page
 .Lskipupdate:
-
+        popl   %es
+        popl   %fs
         leave
         ret
 
@@ -967,7 +990,6 @@ irqKBD:
 .Lnopgup:
         leave
         ret
-
 
 #------------------------------------------------------------------
         .end

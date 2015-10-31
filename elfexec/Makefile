@@ -12,7 +12,7 @@ BOOTLOADER  = $(BOOTDIR)/bootload.bin
 LIBKERNEL   = ../libkernel/libkernel.a
 LDSCRIPT    = ldscript
 PROG        = elfexec
-DEMOAPPS    = ../demoapps/demoapp
+DEMOAPP     = ../demoapps/demoapp
 RAMDISK     = ../tools/ramdisk
 
 TARGETS     = $(PROG).flp
@@ -25,7 +25,7 @@ all: $(TARGETS)
 
 $(PROG).flp : $(PROG).bin $(BOOTLOADER) $(DEMOAPP)
 	$(call update-image,$@,$<,$(FLP_USF_POS))
-	@$(RAMDISK) $@ $(FLP_TOC_POS) $(FLP_ELF_POS) $(DEMOAPPS)
+	@$(RAMDISK) $@ $(FLP_TOC_POS) $(FLP_ELF_POS) $(DEMOAPP)
 
 $(PROG).elf : $(PROG).o $(LIBKERNEL) $(LDSCRIPT)
 	@echo LD -o $@
@@ -34,6 +34,7 @@ $(PROG).elf : $(PROG).o $(LIBKERNEL) $(LDSCRIPT)
 
 $(PROG).o : ../inc/comgdt.inc
 $(PROG).o : ../common_defs.mk
+$(PROG).flp : $(DEMOAPP)
 
 .PHONY: clean
 clean:

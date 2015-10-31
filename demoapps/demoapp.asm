@@ -10,30 +10,30 @@
 %define SECS_PER_HOUR   (60*60) ; seconds per hour
 %define SECS_PER_MIN         60 ; seconds per minute
 
-%define CHR_LF               10 ; New line (LF) character ASCII code
-
 
 ;-------------------------------------------------------------------
 ; Section DATA
 ;-------------------------------------------------------------------
 SECTION .data
 
-msg_str             db "CPUINFO:", CHR_LF
+msg_str             db "CPUINFO:"
+                    db `\r\n`
 msg_str_len         equ $-msg_str
 
 prompt_str          db "CPU vendor is: "
 prompt_str_len      equ $-prompt_str
 
 vendor_str          times 12 db " "
-                    db CHR_LF
+                    db `\r\n`
 vendor_str_len      equ $-vendor_str
 
 type_str            times 3*16 db " "
-                    db CHR_LF
+                    db `\r\n`
 type_str_len        equ $-type_str
 
 time_str            db "00:00:00 GMT "
-ticks_str           db "0000000000", CHR_LF
+ticks_str           db "0000000000"
+                    db `\r\n`
 time_str_len        equ $-time_str
 
 ;-------------------------------------------------------------------
