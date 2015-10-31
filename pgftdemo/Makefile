@@ -38,6 +38,7 @@ $(PROG).elf : $(OBJS) $(LIBKERNEL) $(LIBMINIC) $(LDSCRIPT)
 	@size -A $@
 
 $(PROG).o : ../inc/comgdt.inc
+$(PROG).o : ../common_defs.mk
 
 $(OBJS) : ../common_defs.mk
 pfhandler.o : types.h

@@ -9,6 +9,8 @@ include ../common_defs.mk
 
 PROG        = bootload
 LDSCRIPT    = ldscript
+OBJS        = stage0.o stage1.o
+OBJS       += cmosrtc.o a20ctrl.o memchk.o extmem.o loadprog.o
 TARGETS     = $(PROG).bin
 
 .PHONY: all
@@ -16,9 +18,9 @@ TARGETS     = $(PROG).bin
 
 all: $(TARGETS)
 
-$(PROG).elf : $(PROG).o $(LDSCRIPT)
+$(PROG).elf : $(OBJS) $(LDSCRIPT)
 	@echo LD -o $@
-	@$(LD) $(LDFLAGS) -Map=$(PROG).map --cref -T $(LDSCRIPT) $(PROG).o -o $@
+	@$(LD) $(LDFLAGS) -Map=$(PROG).map --cref -T $(LDSCRIPT) $(OBJS) -o $@
 	@size -A $@
 
 $(PROG).o : ../common_defs.mk
@@ -26,3 +28,4 @@ $(PROG).o : ../common_defs.mk
 .PHONY: clean
 clean:
 	rm -f *.o *.lst *.map *.sym *.bin *.elf $(TARGETS)
+
