@@ -61,6 +61,7 @@ extern uint32_t LD_IMAGE_START;
 
 #define PDE(addr)             (((addr) & PDE_MASK) >> PDE_SHIFT)
 #define PTE(addr)             (((addr) & PTE_MASK) >> PTE_SHIFT)
+#define JOIN_ADDR(pde,pte)    ((pde << PDE_SHIFT) | (pte << PTE_SHIFT))
 
 #define PAGE_ADDR_MASK        (PDE_MASK | PTE_MASK)
 #define PAGE_OFFSET_MASK      ~PAGE_ADDR_MASK
@@ -77,6 +78,9 @@ extern uint32_t LD_IMAGE_START;
 #define PDE_KERNEL_PT         PDE(KERNEL_START_ADDR)
 #define PDE_PROGRAMM_PT       PDE(PROGRAM_START_ADDR)
 #define PDE_STACK_PT          PDE(STACK_START_ADDR)
+
+#define FIRST_PDE_INDEX       1
+#define FIRST_PTE_INDEX       0
 
 
 typedef struct pg_struct {

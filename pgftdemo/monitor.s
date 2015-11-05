@@ -280,10 +280,10 @@ mon_inst_rd_addr:
         call    print_mapped_pages
         jmp     .Lloop
 .Lreleasepages:
-        call    freeAllPages
+        call    free_all_pages
         jmp     .Lloop
 .Lclearaccessedbits:
-        call    clearAllAccessedBits
+        call    clear_all_accessed_bits
         jmp     .Lloop
 .Lpginvaddr:
         incl    %esi
