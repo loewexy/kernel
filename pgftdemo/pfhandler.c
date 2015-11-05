@@ -3,17 +3,17 @@
 
 extern int asm_printf(char *fmt, ...);
 
-/*
- * Declaration of Page Directory and Page tables
- */
-//Create Page Tables
+
+//Create Page Tables for program and stack
 uint32_t page_table_program[PTE_NUM]   __attribute__((aligned(PAGE_SIZE)));
 uint32_t page_table_stack[PTE_NUM]     __attribute__((aligned(PAGE_SIZE)));
 
-//Can be set down, but not higher than die maximum number of pages
+//Can be set down, but not higher than the maximum number of pages
+//TODO description: maybe number of remaining available physical pages
 uint32_t memoryPageCounter = PAGES_PHYSICAL_NUM;
 
 //Page replace parameters
+//Index of the first element in pde/pte which is relevant for calculation
 uint32_t replace_pde_offset = 1;
 uint32_t replace_pte_offset = 0;
 
@@ -21,7 +21,7 @@ uint32_t replace_pte_offset = 0;
  * Structure representing a pageEntry currently in use
  * pde - index in pde
  * pte - index in pte
- * memAddr - virtual address from this entry
+ * memAddr - virtual address of this entry
  */
 struct pageEntry {
     uint32_t pde;
@@ -29,7 +29,7 @@ struct pageEntry {
     uint32_t memAddr;
 };
 
-//Bitfiels for management of storage and memory pages currently in use
+//Bitfields for management of storage and memory pages currently in use
 struct pageEntry storageBitfield[PAGES_SWAPPED_NUM];
 struct pageEntry physicalMemoryBitfield[PAGES_PHYSICAL_NUM];
 
@@ -56,8 +56,14 @@ uint32_t swap(uint32_t virtAddr);
 uint32_t getClassOfPage(uint32_t);
 uint32_t getAddressOfPageToReplace();
 
-
-pg_struct_t *pfhandler(uint32_t ft_addr)
+/**
+ * pfhandler() is called by the kernel every time a page fault occurs.
+ * It ist responsible to find a suitable page to replace, execute the
+ * replacement and returning the new page and other information to the
+ * kernel. 
+ **/
+pg_struct_t *
+pfhandler(uint32_t ft_addr)
 {
     int pde = PDE(ft_addr);
     int pte = PTE(ft_addr);
@@ -69,84 +75,100 @@ pg_struct_t *pfhandler(uint32_t ft_addr)
     pg_struct.vic_addr = INVALID_ADDR;
     pg_struct.sec_addr = INVALID_ADDR;
 
-    //If page table exists in page directory
+    //Get address of page directory with kernel call
     uint32_t *page_directory = get_page_dir_addr();
+    
+    //If corresponding page table exists
     if ((page_directory[pde] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
 
+        //Get address of page table out of page directory
         uint32_t *page_table;
         page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
 
         //If page is not present in page table
-        if ((*(page_table + pte) & PAGE_IS_PRESENT) != PAGE_IS_PRESENT) {
-            /* Left 20 bits are memory address
-             * 
-             */
+        if ((page_table[pte] & PAGE_IS_PRESENT) != PAGE_IS_PRESENT) {
+            
+            //Get address of an empty page to be used for the new page
             uint32_t memoryAddress = getPageFrame();
             memoryAddress &= PAGE_ADDR_MASK;
 
-
-            //TODO: Save swap bit
+            //Set present,rw and user bit in preparation for usage as pte
             memoryAddress = memoryAddress | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
 
-            if ((*(page_table + pte) & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
+            //If page was existing but swaped, set swaped bit again
+            if ((page_table[pte] & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
                 memoryAddress |= PAGE_IS_SWAPPED;
             }
 
-            *(page_table + pte) = memoryAddress;
+            //Store the new entry in page table
+            page_table[pte] = memoryAddress;
+            
+            //Hä
             setPresentBit(pde, pte, (memoryAddress & PAGE_ADDR_MASK));
 
-            //If present on storage bit is set, load page from storage in memory
-            if ((*(page_table + pte) & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
+            //If swapped bit is set, load page from swap to memory
+            if ((page_table[pte] & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
                 uint32_t strVirtAddr = getVirtAddrOfFrameOnDisk(pde, pte);
-
                 copyPage(strVirtAddr, ft_addr & PAGE_ADDR_MASK);
                 //Remove Dirty Bit, because this page wasn't changed
-                *(page_table + pte) &= (~PAGE_IS_DIRTY);
+                page_table[pte] &= (~PAGE_IS_DIRTY);
                 invalidate_addr(ft_addr & PAGE_ADDR_MASK);
             }
-            //Set flags on memory address
 
             pg_struct.ph_addr = memoryAddress & PAGE_ADDR_MASK;
-            pg_struct.flags = *(page_table + pte) & PAGE_OFFSET_MASK;
+            pg_struct.flags = memoryAddress & PAGE_FLAGS_MASK;
 
-        } else {
+        } 
+        //Page is present in page table
+        //TODO: Determine if this is possible
+        else {
             //There is no Page Fault
-            pg_struct.flags = *(page_table + pte) & PAGE_OFFSET_MASK;
-            pg_struct.ph_addr = *(page_table + pte) & PAGE_ADDR_MASK;
+            pg_struct.flags = page_table[pte] & PAGE_FLAGS_MASK;
+            pg_struct.ph_addr = page_table[pte] & PAGE_ADDR_MASK;
         }
 
-    } else {
+    }
+    //Page table is not existent.
+    else {
         //Segmentation Fault. Page Table is not present.
         pg_struct.ph_addr = INVALID_ADDR;
         pg_struct.flags = INVALID_FLAGS;
     }
+    
     return &pg_struct;
+    
 } //END OF PFHANDLER
 
 //==============================================================================
 //START OF MEMORY FUNCTIONS//
 //==============================================================================
 
+/**
+ * Returns physical memory address of new page
+ */
 uint32_t
 getPageFrame() {
-    /*
-     * Returns a memory address
-     * left 20 bits contains memory address
-     */
-
-    //Maximum allowed pages in memory at actual time.
     uint32_t memoryAddress;
+    
+    //Try to get a free memory page in physical memory
     memoryAddress = getFreeMemoryAddress();
-    if (memoryAddress != INVALID_ADDR) {
-                clearPage(memoryAddress);
-        return memoryAddress;
+    
+    //If obtaining free page failed
+    if (memoryAddress == INVALID_ADDR) {   
+        //There is no page left
+        //get virtual address of page to replace
+        uint32_t virtAddr = getAddressOfPageToReplace();
+        
+        //set victim as address of page to replace
+        pg_struct.vic_addr = virtAddr;
+        
+        //swap page, get physical address of page to use
+        memoryAddress = swap(virtAddr);
     }
-    //There is no page left
-    //get virtual address of page to replace
-    uint32_t virtAddr = getAddressOfPageToReplace();
-    pg_struct.vic_addr = virtAddr;
-    memoryAddress = swap(virtAddr);
+    
+    //Clear new page to avoid old data in new page
     clearPage(memoryAddress);
+    
     return memoryAddress;
 } // end of getPageFrame
 
@@ -196,6 +218,10 @@ getFreeMemoryAddress() {
     return INVALID_ADDR;
 } // end of getFreeMemoryAddress
 
+/**
+ * Clears all present pages and invalidates all ptes for each non-kernel
+ * pde. Also deletes all pages from swap.
+ **/
 void
 freeAllPages() {
     uint32_t pde;
@@ -235,11 +261,16 @@ freeAllPages() {
         }
     }
 
-
 } // end of freeAllPages
 
-void clearAllAccessedBits()
+/**
+ * Resets accessed bits for all ptes in page_table_program and
+ * page_table_stack
+ **/
+void
+clearAllAccessedBits()
 {
+    // TODO: Iterate over all pdes and use all page tables
     for (uint32_t i = 0; i < PTE_NUM; i++) {
         // TODO: clear access bit in stack page table
         page_table_program[i] &= ~PAGE_IS_ACCESSED;
@@ -247,7 +278,11 @@ void clearAllAccessedBits()
     }
 } // end of clearAllAccessedBits
 
-void copyPage(uint32_t src_address, uint32_t dst_address) {
+/**
+ * Copy a page from src to dst.
+ **/
+void
+copyPage(uint32_t src_address, uint32_t dst_address) {
     uint32_t *src = LOGADDR(src_address & PAGE_ADDR_MASK);
     uint32_t *dst = LOGADDR(dst_address & PAGE_ADDR_MASK);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
@@ -255,16 +290,15 @@ void copyPage(uint32_t src_address, uint32_t dst_address) {
     }
 } // end of copyPage
 
+/**
+ * Clear a page (set everything to zero)
+ **/
 void clearPage(uint32_t address) {
     uint32_t *addr = LOGADDR(address & PAGE_ADDR_MASK);
     for (int i = 0; i < (PAGE_SIZE / 4); i++) {
         *(addr++) = 0x00000000;
     }
 } // end of clearPage
-
-//==============================================================================
-//END OF MEMORY FUNCTIONS//
-//==============================================================================
 
 
 //==============================================================================
@@ -294,58 +328,68 @@ uint32_t getIndexInStorageBitfield(uint32_t pde, uint32_t pte) {
 
 uint32_t swap(uint32_t virtAddr)
 {
-    // Compute Parameters
-    int pde = PDE(virtAddr);
-    int pte = PTE(virtAddr);
+    //Compute pde and pte for virtAddr
+    uint32_t pde = PDE(virtAddr);
+    uint32_t pte = PTE(virtAddr);
+    
+    //Get address of page directory using kernel call
     uint32_t *page_directory = get_page_dir_addr();
 
-    //printf("Swap:\nPDE: %x PTE: %x\n",pde,pte);
+    //Create variable for place in storage
     uint32_t storageAddr;
 
+    //Invalidate address in TLB because page is going to be relocated to disk
     invalidate_addr(virtAddr);
+    
+    //Get page table coresponding to virtAddr
     uint32_t * page_table = LOGADDR(page_directory[pde] & PAGE_ADDR_MASK);
 
+    //Get physical memory address and flags of the page to swap
     uint32_t memoryAddr = page_table[pte] & PAGE_ADDR_MASK;
-    int flags = page_table[pte] & PAGE_OFFSET_MASK;
-
+    uint32_t flags = page_table[pte] & PAGE_FLAGS_MASK;
 
     // Check if page was modified, only save it then
     if ((flags & PAGE_IS_DIRTY) == PAGE_IS_DIRTY) {
+        
         // Check if page to swap is on disk
         if ((flags & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
+        
             // Get address of page copy on disk
             storageAddr = getVirtAddrOfFrameOnDisk(pde, pte);
-            if (storageAddr != INVALID_ADDR) {
-                // Overwrite copy on disk with modified page 
-                copyPage(virtAddr, storageAddr);
-                pg_struct.sec_addr = storageAddr;
-            }
-        } else {
-            //Get free page on Storage
+        
+            // Overwrite copy on disk with modified page 
+            copyPage(virtAddr, storageAddr);
+            // TODO: THIS IS UGLY, should be fixed
+            pg_struct.sec_addr = storageAddr;
+        }
+        // Page is not on disk
+        else {
+            //Get free page on storage
             uint32_t index = getIndexInStorageBitfield(0, 0);
             storageBitfield[index].pde = pde;
             storageBitfield[index].pte = pte;
             storageAddr = getVirtAddrOfFrameOnDisk(pde, pte);
-            pg_struct.sec_addr = storageAddr;
+            
+            // Write page to disk
             copyPage(virtAddr, storageAddr);
+            
+            // TODO: THIS IS UGLY, should be fixed
+            pg_struct.sec_addr = storageAddr;
         }
         //set swapped bit
         page_table[pte] |= PAGE_IS_SWAPPED;
         //remove dirty bit
         page_table[pte] &= (~PAGE_IS_DIRTY);
     }
+    
     // Reset present bit
     removePresentBit(pde, pte);
 
     page_table[pte] &= (~PAGE_IS_PRESENT);
 
     return memoryAddr;
+} // end of swap
 
-} //END OF SWAP
-
-//==============================================================================
-//END OF DISK FUNCTIONS//
-//==============================================================================
 
 //==============================================================================
 //START OF REPLACEMENT ALGORITHMS//
@@ -442,14 +486,14 @@ uint32_t getClassOfPage(uint32_t flags) {
     }
 } // end of getClassOfPage
 
-//==============================================================================
-//END OF REPLACEMENT ALGORITHMS//
-//==============================================================================
 
 //==============================================================================
-//Initialize paging//
+// START OF PAGING INITIALISATION
 //==============================================================================
 
+/**
+ * Initialise the user pages. Also initialize the index of memory pages and disk pages.
+ **/
 void
 init_user_pages()
 {
@@ -469,7 +513,7 @@ init_user_pages()
         storageBitfield[i].memAddr = 0;
     }
 
-    *(page_directory + PDE_PROGRAMM_PT) = LINADDR(page_table_program) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    *(page_directory + PDE_STACK_PT) = LINADDR(page_table_stack) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-} //END OF INIT PAGING
+    page_directory[PDE_PROGRAMM_PT] = LINADDR(page_table_program) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+    page_directory[PDE_STACK_PT] = LINADDR(page_table_stack) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+} //end of init_user_pages
 
