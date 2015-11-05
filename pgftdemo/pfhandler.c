@@ -138,13 +138,12 @@ get_page_frame() {
     
     //Try to get a free memory page in physical memory
     memory_address = index_memory_get_free();
-    asm_printf("Free page 0x%08X\r\n", memory_address); 
+
     //If obtaining free page failed
     if (memory_address == INVALID_ADDR) {   
         //There is no page left
         //get virtual address of page to replace
         uint32_t virt_address = get_address_of_page_to_replace();
-        asm_printf("Page to replace 0x%08X\r\n", virt_address);
         
         //set victim as address of page to replace
         pg_struct.vic_addr = virt_address;
