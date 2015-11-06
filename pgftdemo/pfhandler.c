@@ -15,6 +15,15 @@ uint32_t storage_pages_index[PAGES_SWAPPED_NUM];
 //Structure for returning from pfhandler()
 static pg_struct_t pg_struct;
 
+//FIFO
+uint32_t fifo_buffer[PAGES_PHYSICAL_NUM];
+uint32_t fifo_write_position = 0;
+uint32_t fifo_read_position = 0;
+uint32_t fifo_number_elements = 0;
+void fifo_enqueue(uint32_t addr);
+uint32_t fifo_dequeue();
+
+
 //Memory functions
 uint32_t get_page_frame();
 void free_all_pages();
@@ -100,6 +109,8 @@ pfhandler(uint32_t ft_addr)
                 page_table[pte] &= (~PAGE_IS_DIRTY);
                 invalidate_addr(ft_addr & PAGE_ADDR_MASK);
             }
+            
+            fifo_enqueue(ft_addr & PAGE_ADDR_MASK);
 
             pg_struct.ph_addr = memory_address & PAGE_ADDR_MASK;
             pg_struct.flags = memory_address & PAGE_FLAGS_MASK;
@@ -388,11 +399,43 @@ uint32_t swap(uint32_t virt_address)
 //START OF REPLACEMENT ALGORITHMS//
 //==============================================================================
 
+/**
+ * Returns logical address of page to replace
+ **/
 uint32_t get_address_of_page_to_replace() {
-    return physical_pages_index[0];
+    return fifo_dequeue();
 } //end of get_address_of_page_to_replace
 
+/**
+ * Add logical address of page to fifo
+ **/
+void fifo_enqueue(uint32_t addr) {
+	//If fifo is full return, this should never happen
+	if(fifo_number_elements >= PAGES_PHYSICAL_NUM) return;
+	
+	//Remove flags
+	addr &= PAGE_ADDR_MASK;
+	
+	fifo_buffer[fifo_write_position] = addr;
+	fifo_write_position++;
+	fifo_write_position %= PAGES_PHYSICAL_NUM;
+	fifo_number_elements++;
+}
 
+/**
+ * Get address of page from fifo
+ **/
+uint32_t fifo_dequeue() {
+	//If fifo is empty return invalid address, this should never happen
+	if(fifo_number_elements == 0) return INVALID_ADDR;
+	
+	uint32_t return_value = fifo_buffer[fifo_read_position];
+	fifo_read_position++;
+	fifo_read_position %= PAGES_PHYSICAL_NUM;
+	fifo_number_elements--;
+	
+	return return_value;
+}
 
 //==============================================================================
 // START OF PAGING INITIALISATION
