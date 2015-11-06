@@ -110,6 +110,7 @@ pfhandler(uint32_t ft_addr)
                 invalidate_addr(ft_addr & PAGE_ADDR_MASK);
             }
             
+            //Add virtual address to fifo
             fifo_enqueue(ft_addr & PAGE_ADDR_MASK);
 
             pg_struct.ph_addr = memory_address & PAGE_ADDR_MASK;
@@ -187,9 +188,10 @@ clear_all_accessed_bits()
 {
     // TODO: Iterate over all pdes and use all page tables
     for (uint32_t i = 0; i < PTE_NUM; i++) {
-        // TODO: clear access bit in stack page table
         page_table_program[i] &= ~PAGE_IS_ACCESSED;
-        invalidate_addr((PDE_PROGRAMM_PT << PDE_SHIFT) | (i << PTE_SHIFT));
+        invalidate_addr(JOIN_ADDR(PDE_PROGRAMM_PT, i));
+        page_table_stack[i] &= ~PAGE_IS_ACCESSED;
+        invalidate_addr(JOIN_ADDR(PDE_STACK_PT, i));
     }
 } // end of clear_all_accessed_bits
 
