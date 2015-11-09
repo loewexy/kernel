@@ -215,12 +215,21 @@ free_all_pages() {
 void
 clear_all_accessed_bits()
 {
-    // TODO: Iterate over all pdes and use all page tables
-    for (uint32_t i = 0; i < PTE_NUM; i++) {
-        page_table_program[i] &= ~PAGE_IS_ACCESSED;
-        invalidate_addr(JOIN_ADDR(PDE_PROGRAMM_PT, i));
-        page_table_stack[i] &= ~PAGE_IS_ACCESSED;
-        invalidate_addr(JOIN_ADDR(PDE_STACK_PT, i));
+    uint32_t *page_directory = get_page_dir_addr();
+    
+    for(int i = FIRST_PDE_INDEX; i < PDE_NUM; i++) {
+        
+        if((page_directory[i] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
+            uint32_t *page_table = LOGADDR(page_directory[i] & PAGE_ADDR_MASK);
+            
+            for(int j = FIRST_PTE_INDEX; j < PTE_NUM; j++) {
+                page_table[j] &= ~PAGE_IS_ACCESSED;
+                
+                if((page_table[j] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
+                    invalidate_addr(JOIN_ADDR(i,j));
+                }
+            }
+        }        
     }
 } // end of clear_all_accessed_bits
 
