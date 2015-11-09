@@ -389,9 +389,9 @@ configure_16550_uart:
         in8     UART_BASE+2             # Interrupt Identification
 
         # transmit null-byte (to initiate UART interrupts)
-        mov     $UART_BASE, %dx
-        mov     $0, %al
-        out     %al, %dx
+        #mov     $UART_BASE, %dx
+        #mov     $0, %al
+        #out     %al, %dx
 
         ret
 

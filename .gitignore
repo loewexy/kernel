@@ -29,6 +29,10 @@
 *.swp
 *.bak
 *~
+demoapps/demoapp
+demoapps/linuxapp
+local/
+tools/ramdisk
 
 # Include some specific files
 !stakernel.tar.gz

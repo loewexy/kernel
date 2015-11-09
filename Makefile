@@ -4,8 +4,10 @@
 #
 #=============================================================================
 
-SUBDIRS     = boot libkernel libminic
+SUBDIRS     = boot dasboot
+SUBDIRS    += libkernel libminic
 SUBDIRS    += pmhello pgftdemo
+SUBDIRS    += demoapps tools elfexec
 
 .PHONY: all subdirs $(SUBDIRS)
 .SECONDARY:
@@ -17,7 +19,10 @@ subdirs : $(SUBDIRS)
 $(SUBDIRS):
 	$(MAKE) -C $@
 
-pmtimer: boot
+elfexec:     dasboot
+pgftdemo:    boot
+pmhello:     boot
+$(SUBDIRS):  common_defs.mk
 
 .PHONY: clean
 clean:

@@ -1,0 +1,34 @@
+/* linker script */
+
+ENTRY(_start);
+OUTPUT_FORMAT("elf32-i386");
+
+SECTIONS
+{
+    .btext 0x7c00 :
+    {
+        stage0.o(.text)
+        . = ALIGN(16);
+    }
+    .bdata :
+    {
+        stage0.o(.data)
+    }
+    .bsig 0x7dfe:
+    {
+        /* At offsets 511 and 512, we set the boot sector signature (0xAA55) */
+        SHORT(0xAA55);
+    }
+    .text 0x7e00 :
+    {
+        *(.text)
+    }
+    .data 0x9000 :
+    {
+        data = .; _data = .; __data = .;
+        *(.data)
+        PROVIDE(edata = .);
+    }
+    end = .; _end = .; __end = .;
+}
+
