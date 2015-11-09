@@ -25,20 +25,18 @@ uint32_t fifo_dequeue();
 
 
 //Memory functions
-uint32_t get_page_frame();
+uint32_t get_page_frame(uint32_t virt_addr);
 void free_all_pages();
 void clear_all_accessed_bits();
 void copy_page(uint32_t, uint32_t);
 void clear_page(uint32_t);
 
 //Index functions
-uint32_t index_memory_get_free();
-void index_memory_add(uint32_t addr);
+uint32_t index_memory_add(uint32_t addr);
 void index_memory_remove(uint32_t addr);
 uint32_t index_memory_is_present(uint32_t addr);
 
-uint32_t index_storage_get_free();
-void index_storage_add(uint32_t addr);
+uint32_t index_storage_add(uint32_t addr);
 void index_storage_remove(uint32_t addr);
 uint32_t index_storage_get_physical_address(uint32_t addr);
 
@@ -84,7 +82,7 @@ pfhandler(uint32_t ft_addr)
         if ((page_table[pte] & PAGE_IS_PRESENT) != PAGE_IS_PRESENT) {
             
             //Get address of an empty page to be used for the new page
-            uint32_t memory_address = get_page_frame();
+            uint32_t memory_address = get_page_frame(ft_addr);
             memory_address &= PAGE_ADDR_MASK;
 
             //Set present,rw and user bit in preparation for usage as pte
@@ -97,9 +95,6 @@ pfhandler(uint32_t ft_addr)
 
             //Store the new entry in page table
             page_table[pte] = memory_address;
-            
-            //Add memory address to index
-            index_memory_add(ft_addr & PAGE_ADDR_MASK);
 
             //If swapped bit is set, load page from swap to memory
             if ((page_table[pte] & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
@@ -145,11 +140,11 @@ pfhandler(uint32_t ft_addr)
  * Returns physical memory address of new page
  */
 uint32_t
-get_page_frame() {
+get_page_frame(uint32_t virt_addr) {
     uint32_t memory_address;
     
     //Try to get a free memory page in physical memory
-    memory_address = index_memory_get_free();
+    memory_address = index_memory_add(virt_addr);
 
     //If obtaining free page failed
     if (memory_address == INVALID_ADDR) {   
@@ -161,7 +156,13 @@ get_page_frame() {
         pg_struct.vic_addr = virt_address;
         
         //swap page, get physical address of page to use
-        memory_address = swap(virt_address);
+        swap(virt_address);
+        
+        memory_address = index_memory_add(virt_addr);
+        
+        if(memory_address == INVALID_ADDR) {
+            asm_printf("Swap should have made one page free, but failed to do so: get_page_frame()");
+        }
     }
     
     //Clear new page to avoid old data in new page
@@ -222,29 +223,19 @@ void clear_page(uint32_t address) {
 //==============================================================================
 
 /**
- * Returns physical address of free memory page.
+ * Add virtual address of page to first free index field, return physical
+ * memory address.
  **/
-uint32_t index_memory_get_free() {
+uint32_t index_memory_add(uint32_t addr) {
+    addr &= PAGE_ADDR_MASK;
     for(int i = 0; i < PAGES_PHYSICAL_NUM; i++) {
         if(physical_pages_index[i] == INVALID_ADDR) {
+            physical_pages_index[i] = addr;
             return (PAGES_PHYSICAL_START + i * PAGE_SIZE);
         }
     }
     
     return INVALID_ADDR;
-}
-
-/**
- * Add virtual address of page to first free index field.
- **/
-void index_memory_add(uint32_t addr) {
-    addr &= PAGE_ADDR_MASK;
-    for(int i = 0; i < PAGES_PHYSICAL_NUM; i++) {
-        if(physical_pages_index[i] == INVALID_ADDR) {
-            physical_pages_index[i] = addr;
-            return;
-        }
-    }
 }
 
 /**
@@ -275,30 +266,21 @@ uint32_t index_memory_is_present(uint32_t addr) {
     return 0;
 }
 
+
 /**
- * Get physical address of empty page in storage.
+ * Add virtual address of page to first free index field and return
+ * physical address in swap.
  **/
-uint32_t index_storage_get_free() {
+uint32_t index_storage_add(uint32_t addr) {
+    addr &= PAGE_ADDR_MASK;
     for(int i = 0; i < PAGES_SWAPPED_NUM; i++) {
         if(storage_pages_index[i] == INVALID_ADDR) {
+            storage_pages_index[i] = addr;
             return (PAGES_SWAPPED_START + i * PAGE_SIZE);
         }
     }
     
     return INVALID_ADDR;
-}
-
-/**
- * Add virtual address of page to first free index field.
- **/
-void index_storage_add(uint32_t addr) {
-    addr &= PAGE_ADDR_MASK;
-    for(int i = 0; i < PAGES_SWAPPED_NUM; i++) {
-        if(storage_pages_index[i] == INVALID_ADDR) {
-            storage_pages_index[i] = addr;
-            return;
-        }
-    }
 }
 
 /**
@@ -372,8 +354,7 @@ uint32_t swap(uint32_t virt_address)
         // Page is not on disk
         else {
             //Get free page on storage
-            uint32_t storage_address = index_storage_get_free();
-            index_storage_add(virt_address);
+            uint32_t storage_address = index_storage_add(virt_address);
             
             // Write page to disk
             copy_page(virt_address, storage_address);
@@ -412,31 +393,31 @@ uint32_t get_address_of_page_to_replace() {
  * Add logical address of page to fifo
  **/
 void fifo_enqueue(uint32_t addr) {
-	//If fifo is full return, this should never happen
-	if(fifo_number_elements >= PAGES_PHYSICAL_NUM) return;
-	
-	//Remove flags
-	addr &= PAGE_ADDR_MASK;
-	
-	fifo_buffer[fifo_write_position] = addr;
-	fifo_write_position++;
-	fifo_write_position %= PAGES_PHYSICAL_NUM;
-	fifo_number_elements++;
+    //If fifo is full return, this should never happen
+    if(fifo_number_elements >= PAGES_PHYSICAL_NUM) return;
+    
+    //Remove flags
+    addr &= PAGE_ADDR_MASK;
+    
+    fifo_buffer[fifo_write_position] = addr;
+    fifo_write_position++;
+    fifo_write_position %= PAGES_PHYSICAL_NUM;
+    fifo_number_elements++;
 }
 
 /**
  * Get address of page from fifo
  **/
 uint32_t fifo_dequeue() {
-	//If fifo is empty return invalid address, this should never happen
-	if(fifo_number_elements == 0) return INVALID_ADDR;
-	
-	uint32_t return_value = fifo_buffer[fifo_read_position];
-	fifo_read_position++;
-	fifo_read_position %= PAGES_PHYSICAL_NUM;
-	fifo_number_elements--;
-	
-	return return_value;
+    //If fifo is empty return invalid address, this should never happen
+    if(fifo_number_elements == 0) return INVALID_ADDR;
+    
+    uint32_t return_value = fifo_buffer[fifo_read_position];
+    fifo_read_position++;
+    fifo_read_position %= PAGES_PHYSICAL_NUM;
+    fifo_number_elements--;
+    
+    return return_value;
 }
 
 //==============================================================================
