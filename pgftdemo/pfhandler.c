@@ -178,6 +178,34 @@ get_page_frame(uint32_t virt_addr) {
 void
 free_all_pages() {
     
+    uint32_t *page_directory = get_page_dir_addr();
+    
+    for(int i = FIRST_PDE_INDEX; i < PDE_NUM; i++) {
+        
+        if((page_directory[i] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
+            uint32_t *page_table = LOGADDR(page_directory[i] & PAGE_ADDR_MASK);
+            
+            for(int j = FIRST_PTE_INDEX; j < PTE_NUM; j++) {
+                
+                if((page_table[j] & PAGE_IS_PRESENT) == PAGE_IS_PRESENT) {
+                    invalidate_addr(JOIN_ADDR(i,j));
+                }
+                page_table[j] = 0x00000000;
+            }
+        }        
+    }
+    
+    //set physical memory bitfield to blank
+    for (uint32_t i = 0; i < PAGES_PHYSICAL_NUM; i++) {
+        physical_pages_index[i] = INVALID_ADDR;
+    }
+
+    for (uint32_t i = 0; i < PAGES_SWAPPED_NUM; i++) {
+        storage_pages_index[i] = INVALID_ADDR;
+    }
+    
+    asm_printf("Freed all pages");
+    
 } // end of free_all_pages
 
 /**
