@@ -15,14 +15,19 @@ LDSCRIPT    = ldscript
 PROG        = pgftdemo
 
 CFLAGS     += -I../libminic/inc
-#CFLAGS     += -Dprintf=asm_printf
+
+SRCDIR     = src
+OBJDIR     = obj
+CSRCS      := $(wildcard $(SRCDIR)/*.c)
+ASRCS      := $(wildcard $(SRCDIR)/*.s)
+ASMSRCS    := $(wildcard $(SRCDIR)/*.asm)
+COBJS      := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(CSRCS))
+AOBJS      := $(patsubst $(SRCDIR)/%.s,$(OBJDIR)/%.o,$(ASRCS))
+ASMOBJS    := $(patsubst $(SRCDIR)/%.asm,$(OBJDIR)/%.o,$(ASMSRCS))
+OBJS       := $(COBJS) $(AOBJS) $(ASMOBJS)
+foo        := $(shell test -d $(OBJDIR) || mkdir -p $(OBJDIR))
 
 TARGETS     = $(PROG).flp $(PROG).sym
-OBJS        = $(PROG).o pfhandler.o paging.o isrpfe.o irqpit.o
-OBJS       += kgetc.o kgets.o
-OBJS       += monitor.o chkcpuid.o
-
-LDFLAGS    += --wrap printf --wrap sprintf --wrap strlen
 
 .PHONY: all
 .SECONDARY:
@@ -37,14 +42,26 @@ $(PROG).elf : $(OBJS) $(LIBKERNEL) $(LIBMINIC) $(LDSCRIPT)
 	@$(LD) $(LDFLAGS) --build-id=md5 -Map=$(PROG).map --cref $(OBJS) -T $(LDSCRIPT) -o $@ $(LIBKERNEL) $(LIBMINIC)
 	@size -A $@
 
+$(OBJDIR)/%.o $(OBJDIR)/%.lst : $(SRCDIR)/%.s
+	@echo AS $<
+	@$(AS) $(ASOPT) -almgns=$(OBJDIR)/$*.lst -o $(OBJDIR)/$*.o -c $<
+
+$(OBJDIR)/%.o $(OBJDIR)/%.lst : $(SRCDIR)/%.asm
+	@echo NASM $<
+	@$(NASM) $(NASMOPT) -l $(OBJDIR)/$*.lst -o $@ $<
+
+$(OBJDIR)/%.o : $(SRCDIR)/%.c
+	@echo CC $<
+	@$(CC) $(CFLAGS) -c -o $@ $<
+
 $(PROG).o : ../inc/comgdt.inc
 $(PROG).o : ../common_defs.mk
 
 $(OBJS) : ../common_defs.mk
-pfhandler.o : types.h
-pfhandler.o : pgftdemo.h
+$(OBJDIR)/pfhandler.o : $(SRCDIR)/types.h
+$(OBJDIR)/pfhandler.o : $(SRCDIR)/pgftdemo.h
 
 .PHONY: clean
 clean:
-	rm -f *.o *.lst *.map *.sym *.bin *.elf $(TARGETS)
+	rm -rf $(OBJDIR) *.map *.sym *.bin *.elf $(TARGETS)
 
