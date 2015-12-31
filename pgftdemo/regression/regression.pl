@@ -4,6 +4,8 @@ use 5.010;
 use strict;
 use warnings;
 
+say "##########";
+
 for(my $i = 0; $i < 1000; $i++)
 {
 	my $number = int(rand() * 100);

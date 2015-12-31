@@ -8,6 +8,7 @@ echo "Running regression Test"
 
 echo "Inserting test script to kernel, this could take a long time."
 cd ..
+make
 ./run_serial.sh < $WD/regression.txt > $WD/output.txt
 cd $WD
 
