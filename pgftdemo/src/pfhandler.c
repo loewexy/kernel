@@ -1,4 +1,5 @@
 #include "pgftdemo.h"
+#include "stat.h"
 
 
 extern int asm_printf(char *fmt, ...);
@@ -98,6 +99,8 @@ pfhandler(uint32_t ft_addr)
 
             //If swapped bit is set, load page from swap to memory
             if ((page_table[pte] & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
+                stat_number_unswapped++;
+                
                 uint32_t storage_address = index_storage_get_physical_address(ft_addr & PAGE_ADDR_MASK);
                 copy_page(storage_address, ft_addr & PAGE_ADDR_MASK);
                 //Remove Dirty Bit, because this page wasn't changed
@@ -376,6 +379,8 @@ uint32_t swap(uint32_t virt_address)
 
     // Check if page was modified, only save it then
     if ((flags & PAGE_IS_DIRTY) == PAGE_IS_DIRTY) {
+        
+        stat_number_swapped++;
         
         // Check if page to swap is on disk
         if ((flags & PAGE_IS_SWAPPED) == PAGE_IS_SWAPPED) {
