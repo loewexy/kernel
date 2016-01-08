@@ -1,6 +1,8 @@
 #include "pgftdemo.h"
 #include "stat.h"
 
+//Include paging algorithms
+#include "algo_fifo.h"
 
 extern int asm_printf(char *fmt, ...);
 
@@ -15,15 +17,6 @@ uint32_t storage_pages_index[PAGES_SWAPPED_NUM];
 
 //Structure for returning from pfhandler()
 static pg_struct_t pg_struct;
-
-//FIFO
-uint32_t fifo_buffer[PAGES_PHYSICAL_NUM];
-uint32_t fifo_write_position = 0;
-uint32_t fifo_read_position = 0;
-uint32_t fifo_number_elements = 0;
-void fifo_enqueue(uint32_t addr);
-uint32_t fifo_dequeue();
-
 
 //Memory functions
 uint32_t get_page_frame(uint32_t virt_addr);
@@ -43,6 +36,11 @@ uint32_t index_storage_get_physical_address(uint32_t addr);
 
 //Disk functions
 uint32_t swap(uint32_t virtAddr);
+
+//Functions of external paging algorithm
+uint32_t (*algo_get_address_of_page_to_replace)();
+void (*algo_new_page_in_ram)(uint32_t addr);
+
 
 //Functions of paging algorithm
 uint32_t get_address_of_page_to_replace();
@@ -109,7 +107,7 @@ pfhandler(uint32_t ft_addr)
             }
             
             //Add virtual address to fifo
-            fifo_enqueue(ft_addr & PAGE_ADDR_MASK);
+            (*algo_new_page_in_ram)(ft_addr & PAGE_ADDR_MASK);
 
             pg_struct.ph_addr = memory_address & PAGE_ADDR_MASK;
             pg_struct.flags = memory_address & PAGE_FLAGS_MASK;
@@ -134,6 +132,26 @@ pfhandler(uint32_t ft_addr)
     return &pg_struct;
     
 } //END OF PFHANDLER
+
+/**
+ * Selects which algorithm to use for page replacement.
+ * 
+ * 0 - FIFO
+ */
+void select_paging_algorithm(uint32_t algo) {
+    switch(algo) {
+        case 0: //FIFO
+            algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
+            algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
+            break;
+        default:
+            asm_printf("Illegal algorithm!\r\n");
+            break;
+    }
+    
+    free_all_pages();
+}
+
 
 //==============================================================================
 //START OF MEMORY FUNCTIONS
@@ -428,39 +446,9 @@ uint32_t swap(uint32_t virt_address)
  * Returns logical address of page to replace
  **/
 uint32_t get_address_of_page_to_replace() {
-    return fifo_dequeue();
+    return (*algo_get_address_of_page_to_replace)();
 } //end of get_address_of_page_to_replace
 
-/**
- * Add logical address of page to fifo
- **/
-void fifo_enqueue(uint32_t addr) {
-    //If fifo is full return, this should never happen
-    if(fifo_number_elements >= PAGES_PHYSICAL_NUM) return;
-    
-    //Remove flags
-    addr &= PAGE_ADDR_MASK;
-    
-    fifo_buffer[fifo_write_position] = addr;
-    fifo_write_position++;
-    fifo_write_position %= PAGES_PHYSICAL_NUM;
-    fifo_number_elements++;
-}
-
-/**
- * Get address of page from fifo
- **/
-uint32_t fifo_dequeue() {
-    //If fifo is empty return invalid address, this should never happen
-    if(fifo_number_elements == 0) return INVALID_ADDR;
-    
-    uint32_t return_value = fifo_buffer[fifo_read_position];
-    fifo_read_position++;
-    fifo_read_position %= PAGES_PHYSICAL_NUM;
-    fifo_number_elements--;
-    
-    return return_value;
-}
 
 //==============================================================================
 // START OF PAGING INITIALISATION
@@ -486,5 +474,9 @@ init_user_pages()
 
     page_directory[PDE_PROGRAMM_PT] = LINADDR(page_table_program) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
     page_directory[PDE_STACK_PT] = LINADDR(page_table_stack) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
+    
+    //Initialize with paging algorithm FIFO
+    algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
+    algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
 } //end of init_user_pages
 
