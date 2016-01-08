@@ -204,7 +204,7 @@ free_all_pages() {
         storage_pages_index[i] = INVALID_ADDR;
     }
     
-    asm_printf("Freed all pages");
+    asm_printf("Freed all pages\r\n");
     
 } // end of free_all_pages
 
