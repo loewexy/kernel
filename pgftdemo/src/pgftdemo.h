@@ -98,7 +98,7 @@ typedef struct pg_struct {
 /* pfhandler.c */
 extern void init_user_pages(void);
 extern void freeAllPages(void);
-extern pg_struct_t *pfhandler(uint32_t ft_addr);
+extern pg_struct_t *pfhandler(uint32_t ft_addr, uint32_t error_code);
 
 /* paging.s */
 extern void invalidate_addr(uint32_t);

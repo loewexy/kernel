@@ -98,6 +98,9 @@ isrPFE:
         testb   $1, 64(%ebp)            # pf caused by not present page?
         jnz     .Lprotviol
 
+        mov     64(%ebp), %eax
+        push    %eax
+
         mov     %cr2, %eax              # faulting address
         pushl   %eax                    # push to stack for later use
         invlpg  %gs:(%eax)              # invalidate TLB
@@ -106,7 +109,7 @@ isrPFE:
         call    int_to_hex
 
         call    pfhandler               # uses stack parameter pushed above
-        add     $4, %esp
+        add     $8, %esp
 
         mov     %eax, %ebx
         mov     16(%ebx), %eax          # get physical address

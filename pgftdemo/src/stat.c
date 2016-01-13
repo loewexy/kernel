@@ -8,7 +8,7 @@ uint32_t stat_number_unswapped = 0;
 
 extern int asm_printf(char *fmt, ...);
 
-extern void stat_print() {
+void stat_print() {
     asm_printf("Statistics:\r\n");
     asm_printf("Read Page Faults:\t%d\r\n", stat_number_pgft_read);
     asm_printf("Write Page Faults:\t%d\r\n", stat_number_pgft_write);

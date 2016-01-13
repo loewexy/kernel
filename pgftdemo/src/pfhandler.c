@@ -55,10 +55,13 @@ void init_user_pages();
  * kernel. 
  **/
 pg_struct_t *
-pfhandler(uint32_t ft_addr)
+pfhandler(uint32_t ft_addr, uint32_t error_code)
 {
     int pde = PDE(ft_addr);
     int pte = PTE(ft_addr);
+
+    //TODO: fix me!
+    error_code = error_code;
 
     pg_struct.pde = pde;
     pg_struct.pte = pte;
