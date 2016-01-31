@@ -61,7 +61,11 @@ pfhandler(uint32_t ft_addr, uint32_t error_code)
     int pte = PTE(ft_addr);
 
     //TODO: fix me!
-    error_code = error_code;
+    if(error_code & 0x00000002) {
+        stat_number_pgft_write++;
+    } else {
+        stat_number_pgft_read++;
+    }
 
     pg_struct.pde = pde;
     pg_struct.pte = pte;
