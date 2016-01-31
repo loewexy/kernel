@@ -40,6 +40,7 @@ uint32_t swap(uint32_t virtAddr);
 //Functions of external paging algorithm
 uint32_t (*algo_get_address_of_page_to_replace)();
 void (*algo_new_page_in_ram)(uint32_t addr);
+void (*algo_init)();
 
 
 //Functions of paging algorithm
@@ -150,6 +151,7 @@ void select_paging_algorithm(uint32_t algo) {
         case 0: //FIFO
             algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
             algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
+            algo_init = &algo_fifo_init;
             break;
         default:
             asm_printf("Illegal algorithm!\r\n");
@@ -157,6 +159,7 @@ void select_paging_algorithm(uint32_t algo) {
     }
     
     free_all_pages();
+    algo_init();
 }
 
 
@@ -485,5 +488,7 @@ init_user_pages()
     //Initialize with paging algorithm FIFO
     algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
     algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
+    algo_init = &algo_fifo_init;
+    algo_init();
 } //end of init_user_pages
 

@@ -11,6 +11,18 @@ static void fifo_enqueue(uint32_t addr);
 static uint32_t fifo_dequeue();
 
 /**
+ * Initializes all data structures
+ **/
+void algo_fifo_init() {
+    for(unsigned int i = 0; i < sizeof(fifo_buffer)/sizeof(fifo_buffer[0]); i++)
+        fifo_buffer[i] = 0;
+        
+    fifo_write_position = 0;
+    fifo_read_position = 0;
+    fifo_number_elements = 0;
+}
+
+/**
  * Returns logical address of page to replace
  **/
 uint32_t algo_fifo_get_address_of_page_to_replace() {
