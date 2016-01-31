@@ -16,6 +16,7 @@ hlpmsg: .ascii  "Monitor Commands:\r\n"
         .ascii  "  C           - Release allocated pages (except kernel)\r\n"
         .ascii  "  A           - Reset all accessed bits in page table\r\n"
         .ascii  "  S           - Print various statistics\r\n"
+        .ascii  "  L ALGO      - Change algo to number ALGO\r\n"
         .ascii  "  D ADDR NUM  - Dump NUM words beginning at address ADDR\r\n"
         .ascii  "  X ADDR NUM  - Calculate CRC32 for NUM words starting at address ADDR\r\n"
         .ascii  "  P ADDR      - Invalidate TLB entry for virtual address ADDR\r\n"
@@ -58,6 +59,7 @@ mon_addr:
         .extern freeAllPages
         .extern clearAllAccessedBits
         .extern stat_print
+        .extern select_paging_algorithm
 run_monitor:
         enter   $260, $0
         pushal
@@ -113,6 +115,8 @@ run_monitor:
         je      .Lwriteaddr
         cmpb    $'R', %al
         je      .Lreadaddr
+        cmpb    $'L', %al
+        je      .Lchangealgo
         cmpb    $'X', %al
         je      .Lcrcaddr
         cmpb    $'D', %al
@@ -138,6 +142,13 @@ run_monitor:
         leal    hlpmsg, %esi
         movl    $hlpmsg_len, %ecx
         call    screen_write
+        jmp     .Lloop
+
+.Lchangealgo:
+        incl    %esi
+        call    hex2int
+        push    %eax
+        call    select_paging_algorithm
         jmp     .Lloop
 
         #----------------------------------------------------------

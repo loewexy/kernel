@@ -3,6 +3,7 @@
 
 //Include paging algorithms
 #include "algo_fifo.h"
+#include "algo_random.h"
 
 extern int asm_printf(char *fmt, ...);
 
@@ -147,11 +148,19 @@ pfhandler(uint32_t ft_addr, uint32_t error_code)
  * 0 - FIFO
  */
 void select_paging_algorithm(uint32_t algo) {
+    asm_printf("%d", algo);
     switch(algo) {
         case 0: //FIFO
             algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
             algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
             algo_init = &algo_fifo_init;
+            asm_printf("Changed to FIFO!\r\n");
+            break;
+        case 1: //Random
+            algo_get_address_of_page_to_replace = &algo_random_get_address_of_page_to_replace;
+            algo_new_page_in_ram = &algo_random_new_page_in_ram;
+            algo_init = &algo_random_init;
+            asm_printf("Changed to random\r\n");
             break;
         default:
             asm_printf("Illegal algorithm!\r\n");
