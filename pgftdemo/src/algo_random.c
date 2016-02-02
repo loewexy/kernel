@@ -11,7 +11,6 @@ static uint64_t random_state = 0;
 static uint32_t get_random_number();
 extern int asm_printf(char *fmt, ...);
 
-static uint32_t test[5];
 /**
  * Initializes all data structures
  **/
