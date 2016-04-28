@@ -4,6 +4,7 @@
 //Include paging algorithms
 #include "algo_fifo.h"
 #include "algo_random.h"
+#include "algo_clock.h"
 
 extern int asm_printf(char *fmt, ...);
 
@@ -161,6 +162,12 @@ void select_paging_algorithm(uint32_t algo) {
             algo_new_page_in_ram = &algo_random_new_page_in_ram;
             algo_init = &algo_random_init;
             asm_printf("Changed to random\r\n");
+            break;
+        case 2: //Clock
+            algo_get_address_of_page_to_replace = &algo_clock_get_address_of_page_to_replace;
+            algo_new_page_in_ram = &algo_clock_new_page_in_ram;
+            algo_init = &algo_clock_init;
+            asm_printf("Changed to clock\r\n");
             break;
         default:
             asm_printf("Illegal algorithm!\r\n");
@@ -493,7 +500,7 @@ init_user_pages()
 
     page_directory[PDE_PROGRAMM_PT] = LINADDR(page_table_program) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
     page_directory[PDE_STACK_PT] = LINADDR(page_table_stack) | PAGE_IS_PRESENT | PAGE_IS_RW | PAGE_IS_USER;
-    
+    asm_printf("Test out 0x%X\r\n", page_directory[PDE_PROGRAMM_PT]);
     //Initialize with paging algorithm FIFO
     algo_get_address_of_page_to_replace = &algo_fifo_get_address_of_page_to_replace;
     algo_new_page_in_ram = &algo_fifo_new_page_in_ram;
