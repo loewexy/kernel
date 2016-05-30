@@ -1,25 +1,39 @@
 ##
-# free pages, nothing should happen
+
+#Free pages
 C
+
+#Select clock as algorithm
 L 00000002
+
+#Print page table
 M
 
+#Access four different pages
 R 08048000
 R 08049000
 R 0804a000
 R 0804b000
-#D 00027000 00000200
+
+#Print page table
 M
 
+#Access a fifth page, this should replace page 08048000
 R 0804c000
 
+#Print page table
 M
 
+#Access the second page in order to set the accessed bit
 R 08049000
+
+#Access a sixth page, this should replace the page 0804A000
 R 0804d000
 
+#Print page table
 M
 
+#Exit monitor
 Q
 Q
 
