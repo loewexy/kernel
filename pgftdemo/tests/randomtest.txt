@@ -1,0 +1,42 @@
+##
+
+#Free pages
+C
+
+#Select random as algorithm
+L 00000001
+
+#Print page table
+M
+
+#Access four different pages
+R 08048000
+R 0804a000
+R 08049000
+R 0804b000
+
+#Print page table
+M
+
+#Access a fifth page, this should replace page on frame 1
+R 0804c000
+
+#Print page table
+M
+
+#Access a sixth page, this should replace the page on frame 0
+R 0804d000
+
+#Access a seventh page, this should replace the page on frame 1
+R 0804e000
+
+#Access a eigth page, this should replace the page on frame 3
+R 0804f000
+
+
+#Print page table
+M
+
+#Exit monitor
+Q
+Q
