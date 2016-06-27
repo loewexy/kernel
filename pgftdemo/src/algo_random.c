@@ -59,6 +59,8 @@ void algo_random_new_page_in_ram(uint32_t addr) {
  * Returns random 32 bit unsigned integer
  **/
 uint32_t get_random_number() {
-    return random_array[random_index % RANDOM_ARRAY_SIZE];
+    uint32_t random_number = random_array[random_index % RANDOM_ARRAY_SIZE];
+
     random_index++;
+    return random_number;
 }
